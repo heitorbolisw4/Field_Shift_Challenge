@@ -10,10 +10,27 @@ var web = new PhysicalFileProvider(Path.GetFullPath(Path.Combine(builder.Environ
 app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = web });  // "/" abre web/index.html
 app.UseStaticFiles(new StaticFileOptions { FileProvider = web });
 
-// passo 4: média por mês, para checar se os dados fazem sentido
-app.MapGet("/clima", async (double lat, double lon, IHttpClientFactory http) =>
+Imerg.Pasta = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "imerg"));
+
+// clima diário do POWER; com fonteChuva=imerg, a chuva vem do CSV do IMERG. null = não tem IMERG para esse ponto.
+// "auto": IMERG se tiver CSV do pixel, senão POWER. Devolve também a fonte usada de fato.
+async Task<(List<Dia>? Dias, string Fonte)> Dados(IHttpClientFactory http, double lat, double lon, string fonte)
 {
-    var validos = await Power.BaixarAsync(http.CreateClient(), lat, lon);
+    var power = await Power.BaixarAsync(http.CreateClient(), lat, lon);
+    if (fonte == "power") return (power, "power");
+    if (fonte is not ("auto" or "imerg")) return (null, fonte);
+    var imerg = Imerg.TrocarChuva(power, lat, lon);
+    return fonte == "auto" && imerg is null ? (power, "power") : (imerg, "imerg");
+}
+IResult SemImerg(double lat, double lon, string fonte) => fonte != "imerg"
+    ? Results.BadRequest("fonteChuva deve ser auto, imerg ou power")
+    : Results.BadRequest($"sem dados do IMERG para este ponto: falta {Path.GetFileName(Imerg.Arquivo(lat, lon))} em data/imerg");
+
+// passo 4: média por mês, para checar se os dados fazem sentido
+app.MapGet("/clima", async (double lat, double lon, IHttpClientFactory http, string fonteChuva = "auto") =>
+{
+    (var validos, fonteChuva) = await Dados(http, lat, lon, fonteChuva);
+    if (validos is null) return SemImerg(lat, lon, fonteChuva);
 
     var porMes = validos
         .GroupBy(d => d.Data.Month)
@@ -25,18 +42,21 @@ app.MapGet("/clima", async (double lat, double lon, IHttpClientFactory http) =>
             chuvaMes = Math.Round(g.Sum(d => d.Chuva) / 10, 0)          // mm/mês, média dos anos
         });
 
-    return Results.Ok(new { validos = validos.Count, porMes });
+    return Results.Ok(new { fonteChuva, validos = validos.Count, porMes });
 });
 
+// cad padrão 30: calibrado contra o ZARC com chuva do IMERG
 // passo 5/6: déficit de UMA cultura plantada numa data, ano a ano (com balde de solo)
-// ex.: /deficit?lat=-19.03&lon=-47.92&plantio=02-15&cultura=milho&cad=70
-app.MapGet("/deficit", async (double lat, double lon, string plantio, string cultura, IHttpClientFactory http, double cad = 70, double fatorChuva = 1, string et0 = "pm") =>
+// ex.: /deficit?lat=-19.03&lon=-47.92&plantio=02-15&cultura=milho&cad=30
+app.MapGet("/deficit", async (double lat, double lon, string plantio, string cultura, IHttpClientFactory http, double cad = 30, double fatorChuva = 1, string et0 = "pm", string fonteChuva = "auto") =>
 {
     if (!Culturas.Todas.TryGetValue(cultura, out var c))
         return Results.BadRequest($"cultura desconhecida: {cultura}");
 
     var md = DateOnly.ParseExact($"2000-{plantio}", "yyyy-MM-dd", CultureInfo.InvariantCulture); // "02-15" vira mês/dia
-    var dias = (await Power.BaixarAsync(http.CreateClient(), lat, lon)).ToDictionary(d => d.Data);
+    (var lista, fonteChuva) = await Dados(http, lat, lon, fonteChuva);
+    if (lista is null) return SemImerg(lat, lon, fonteChuva);
+    var dias = lista.ToDictionary(d => d.Data);
 
     var anos = new List<object>();
     foreach (var ano in dias.Keys.Select(d => d.Year).Distinct().Order())
@@ -52,21 +72,23 @@ app.MapGet("/deficit", async (double lat, double lon, string plantio, string cul
                        passaZarc = Modelo.Passa(c, s, "isna") });
     }
 
-    return Results.Ok(new { cultura = c.Nome, plantio, ciclo = c.Ciclo, cad, fatorChuva, et0, anos });
+    return Results.Ok(new { cultura = c.Nome, plantio, ciclo = c.Ciclo, cad, fatorChuva, et0, fonteChuva, anos });
 });
 
 // passo 10: calendário por DECÊNDIO (blocos de 10 dias, como o ZARC), com nível de risco
 // ex.: /recomendacao?lat=-19.03&lon=-47.92&inicio=01-20&fim=03-20
 app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string fim, IHttpClientFactory http,
-                                   double cad = 70, double fatorChuva = 1, string et0 = "pm",
-                                   string criterio = "isna", double riscoMax = 0.2) =>
+                                   double cad = 30, double fatorChuva = 1, string et0 = "pm",
+                                   string criterio = "isna", double riscoMax = 0.2, string fonteChuva = "auto") =>
 {
     var inv = CultureInfo.InvariantCulture;
     var di = DateOnly.ParseExact($"2001-{inicio}", "yyyy-MM-dd", inv); // 2001: ano qualquer, não bissexto
     var df = DateOnly.ParseExact($"2001-{fim}", "yyyy-MM-dd", inv);
     if (df < di) df = df.AddYears(1);  // janela cruza o ano (ex.: dez -> mar): o fim vai para 2002
 
-    var dias = (await Power.BaixarAsync(http.CreateClient(), lat, lon)).ToDictionary(d => d.Data);
+    (var lista, fonteChuva) = await Dados(http, lat, lon, fonteChuva);
+    if (lista is null) return SemImerg(lat, lon, fonteChuva);
+    var dias = lista.ToDictionary(d => d.Data);
     var anos = dias.Keys.Select(d => d.Year).Distinct().Order().ToList();
 
     var decendios = new List<object>();
@@ -106,7 +128,7 @@ app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string
         d = fimDec.AddDays(1);
     }
 
-    return Results.Ok(new { cad, et0, criterio, riscoMax, decendios });
+    return Results.Ok(new { cad, et0, criterio, riscoMax, fonteChuva, decendios });
 });
 
 app.Run();
