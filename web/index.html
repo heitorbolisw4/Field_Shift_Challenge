@@ -25,6 +25,8 @@
     .legenda { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; }
     .legenda span { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 4px; }
     .erro { color: #b00020; margin-top: 12px; }
+    .colheita { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; width: 100%; padding-top: 8px; border-top: 1px dashed #ddd; }
+    .nota { font-size: 13px; color: #555; }
   </style>
 </head>
 <body>
@@ -47,17 +49,46 @@
       ["Uberaba",      -19.75, -47.93],
     ];
 
+    // dias de colheita = área ÷ (ha/dia por colhedora × nº colhedoras) ÷ fração de dias úteis (chuva, quebra)
+    function diasColheita(area, haDia, colhedoras, uteisPct) {
+      const capacidade = haDia * colhedoras * (uteisPct / 100);  // ha colhidos por dia de calendário
+      return capacidade > 0 ? Math.ceil(area / capacidade) : 0;
+    }
+
+    // soma dias a uma data "aaaa-mm-dd"
+    function somarDias(iso, n) {
+      const d = new Date(iso + "T12:00:00");                    // meio-dia evita erro de fuso
+      d.setDate(d.getDate() + n);
+      return d.toISOString().slice(0, 10);
+    }
+
     // "2026-02-15" (input date) -> "02-15" (formato da API)
     const mesDia = (iso) => iso.slice(5);
 
-    // junta decêndios seguidos com a mesma recomendação: "milho de 01/01 a 31/01"
-    function resumir(decendios) {
-      const trechos = [];
+    // percorre a colheita dia a dia, pega a cultura do decêndio de cada dia e junta dias seguidos iguais.
+    // Corta no fim real da colheita e estima quantos ha vão para cada cultura.
+    function trechosDaColheita(decendios, c) {
+      const rec = {};  // "01-11" (mês-início do decêndio) -> cultura
       for (const d of decendios) {
-        const [de, , ate] = d.decendio.split(" ");
+        const [dd, mm] = d.decendio.slice(0, 5).split("/");
+        rec[mm + "-" + dd] = d.recomendacao;
+      }
+
+      const trechos = [];
+      for (let iso = c.inicio; iso <= c.fim; iso = somarDias(iso, 1)) {
+        const mm = iso.slice(5, 7), dia = +iso.slice(8, 10);
+        const cultura = rec[mm + "-" + (dia <= 10 ? "01" : dia <= 20 ? "11" : "21")] ?? "?";
+        const br = iso.slice(8, 10) + "/" + mm;
         const ult = trechos[trechos.length - 1];
-        if (ult && ult.cultura === d.recomendacao) ult.ate = ate;
-        else trechos.push({ cultura: d.recomendacao, de, ate });
+        if (ult && ult.cultura === cultura) { ult.ate = br; ult.dias++; }
+        else trechos.push({ cultura, de: br, ate: br, dias: 1 });
+      }
+
+      // ha por trecho = dias × capacidade diária, sem passar da área total
+      let resto = c.area;
+      for (const t of trechos) {
+        t.ha = Math.round(Math.min(t.dias * c.capacidade, resto));
+        resto -= t.ha;
       }
       return trechos;
     }
@@ -67,10 +98,19 @@
       const [lat, setLat] = useState("-19.03");
       const [lon, setLon] = useState("-47.92");
       const [inicio, setInicio] = useState("2027-01-01");
-      const [fim, setFim] = useState("2027-03-31");
+      const [fimManual, setFimManual] = useState("2027-03-31");
+      const [calcularFim, setCalcularFim] = useState(true);
+      const [area, setArea] = useState("1000");        // ha de soja
+      const [colhedoras, setColhedoras] = useState("1");
+      const [haDia, setHaDia] = useState("60");         // ESTIMATIVA: ha/dia por colhedora
+      const [uteis, setUteis] = useState("70");         // ESTIMATIVA: % de dias com colheita (o resto é chuva/quebra)
+
+      const dias = diasColheita(+area, +haDia, +colhedoras, +uteis);
+      const fim = calcularFim ? somarDias(inicio, Math.max(dias - 1, 0)) : fimManual;
       const [cad, setCad] = useState("47");
       const [riscoMax, setRiscoMax] = useState("0.2");
       const [dados, setDados] = useState(null);
+      const [consulta, setConsulta] = useState(null); // entradas usadas no último cálculo
       const [carregando, setCarregando] = useState(false);
       const [erro, setErro] = useState("");
 
@@ -89,6 +129,8 @@
           const r = await fetch("/recomendacao?" + q);
           if (!r.ok) throw new Error(await r.text());
           setDados(await r.json());
+          setConsulta({ inicio, fim, area: +area, comHa: calcularFim,
+                        capacidade: (+haDia) * (+colhedoras) * (+uteis) / 100 });
         } catch (err) {
           setErro("Falhou: " + err.message);
         } finally {
@@ -112,7 +154,24 @@
           <label>Latitude <input value=${lat} onChange=${e => { setCidade("outra"); setLat(e.target.value); }} size="7" /></label>
           <label>Longitude <input value=${lon} onChange=${e => { setCidade("outra"); setLon(e.target.value); }} size="7" /></label>
           <label>Colheita da soja: início <input type="date" value=${inicio} onChange=${e => setInicio(e.target.value)} /></label>
-          <label>fim <input type="date" value=${fim} onChange=${e => setFim(e.target.value)} /></label>
+          <label>fim
+            <input type="date" value=${fim} disabled=${calcularFim} onChange=${e => setFimManual(e.target.value)} />
+          </label>
+          <label style=${{ flexDirection: "row", alignItems: "center", gap: "6px" }}>
+            <input type="checkbox" checked=${calcularFim} onChange=${e => setCalcularFim(e.target.checked)} />
+            calcular fim pela colheita
+          </label>
+          ${calcularFim && html`
+            <div className="colheita">
+              <label>Área (ha) <input type="number" min="1" value=${area} onChange=${e => setArea(e.target.value)} style=${{ width: "80px" }} /></label>
+              <label>Colhedoras <input type="number" min="1" value=${colhedoras} onChange=${e => setColhedoras(e.target.value)} style=${{ width: "60px" }} /></label>
+              <label>ha/dia por colhedora* <input type="number" min="1" value=${haDia} onChange=${e => setHaDia(e.target.value)} style=${{ width: "70px" }} /></label>
+              <label>Dias úteis (%)* <input type="number" min="1" max="100" value=${uteis} onChange=${e => setUteis(e.target.value)} style=${{ width: "60px" }} /></label>
+              <span className="nota">
+                Colheita leva <b>${dias} dias</b>.
+                ${" "}* estimativa: ajuste para a sua máquina e região.
+              </span>
+            </div>`}
           <label>Solo
             <select value=${cad} onChange=${e => setCad(e.target.value)}>
               <option value="30">Arenoso (30 mm)</option>
@@ -135,8 +194,8 @@
         ${dados && html`
           <div className="resumo">
             <strong>Recomendação:</strong>${" "}
-            ${resumir(dados.decendios).map((t, i) => html`
-              <span key=${i}>${i > 0 ? " · " : ""}<b>${t.cultura}</b> de ${t.de} a ${t.ate}</span>`)}
+            ${trechosDaColheita(dados.decendios, consulta).map((t, i) => html`
+              <span key=${i}>${i > 0 ? " · " : ""}<b>${t.cultura}</b> de ${t.de} a ${t.ate}${consulta.comHa ? ` (~${t.ha} ha)` : ""}</span>`)}
           </div>
 
           <div className="tabela">
