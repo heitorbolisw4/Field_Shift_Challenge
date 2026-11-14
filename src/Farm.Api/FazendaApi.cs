@@ -259,6 +259,9 @@ static class FazendaApi
                 .Select((s, k) => (ok: int.TryParse(s, out var n), n, k)).Where(x => x.ok).GroupBy(x => x.n).ToDictionary(g => g.Key, g => g.First().k);
             var fila = f.Talhoes.OrderBy(t => pos.GetValueOrDefault(t.Id, int.MaxValue)).ThenBy(t => t.Id).ToList();
 
+            // checa antes da Fila: com capacidade minúscula os dias passam de int e AddDays estoura
+            if (fila.Sum(t => t.AreaHa) / capacidade > 365) return TypedResults.BadRequest("a colheita passaria de 365 dias: confira áreas e colhedoras");
+
             // fila com capacidade contínua: o talhão seguinte aproveita a sobra do dia em que o anterior termina
             var etapas = Colheita.Fila(inicio, fila.Select(t => t.AreaHa).ToList(), capacidade);
             if (etapas[^1].Ate.DayNumber - inicio.DayNumber >= 365) return TypedResults.BadRequest("a colheita passaria de 365 dias: confira áreas e colhedoras");

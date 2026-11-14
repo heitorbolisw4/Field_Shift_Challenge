@@ -10,8 +10,9 @@ public static class Colheita
     // ha colhidos por dia de calendário: ha/dia de todas as colhedoras × fração de dias úteis (chuva, quebra)
     public static double Capacidade(double haDiaTotal, double uteisPct) => haDiaTotal * uteisPct / 100;
 
+    // mesma tolerância da Fila: 9,9 / 3,3 = 3,0000000000000004 são 3 dias, não 4
     public static int Dias(double area, double capacidade) =>
-        capacidade > 0 ? (int)Math.Ceiling(area / capacidade) : 0;
+        capacidade > 0 && area > 0 ? Math.Max(1, (int)Math.Ceiling(area / capacidade - 1e-9)) : 0;
 
     // último dia de colheita (o início conta como dia 1)
     public static DateOnly Fim(DateOnly inicio, int dias) => inicio.AddDays(Math.Max(dias - 1, 0));
@@ -66,8 +67,8 @@ public static class Colheita
         return Agrupar(dias);
     }
 
-    // junta dias seguidos com a mesma cultura. Arredonda a 0,01 ha pelo acumulado:
-    // a soma dos trechos é exatamente a área (com 2 casas), nunca passa dela
+    // junta dias seguidos com a mesma cultura. Arredonda a 0,01 ha pelo acumulado, para baixo:
+    // a soma dos trechos é exatamente a área (com 2 casas), nunca passa dela (10,125 fica 10,12)
     static List<Trecho> Agrupar(List<(DateOnly Dia, string Cultura, double Ha)> dias)
     {
         var grupos = new List<(string Cultura, DateOnly De, DateOnly Ate, int Dias, double Ha)>();
@@ -82,7 +83,7 @@ public static class Colheita
         foreach (var g in grupos)
         {
             acumulado += g.Ha;
-            var cent = (long)Math.Round(acumulado * 100, MidpointRounding.AwayFromZero);
+            var cent = (long)Math.Floor(acumulado * 100 + 1e-6); // 1e-6: 10,37 vira 1036,9999… em double
             trechos.Add(new(g.Cultura, g.De, g.Ate, g.Dias, (cent - centAntes) / 100.0));
             centAntes = cent;
         }

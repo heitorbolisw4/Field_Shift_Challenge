@@ -59,8 +59,8 @@ public class BordasTests(ApiFabrica api, ITestOutputHelper saida)
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
     }
 
-    // lat=±90 passa no filtro; /recomendacao aguenta, mas /clima dá 500 no polo (ET0 NaN na média -> JSON não serializa NaN).
-    [Theory(Skip = "BUG: /clima?lat=90 dá 500 (ET0 NaN no polo)")]
+    // lat=±90 passa no filtro; no polo o Acos do Ra saía de [-1, 1] e a ET0 virava NaN (JSON não serializa NaN -> 500)
+    [Theory]
     [InlineData("/clima?lat=90&lon=0")]
     [InlineData("/clima?lat=-90&lon=0")]
     public async Task Polo_nao_pode_dar_500(string url)
@@ -171,26 +171,28 @@ public class BordasTests(ApiFabrica api, ITestOutputHelper saida)
         Assert.Equal(new DateOnly(2026, 1, 7), t[1].Data("de"));
     }
 
-    // colhedora com haDia minúsculo passa na validação (> 0); Fila estoura AddDays antes do limite de 365 dias
-    [Fact(Skip = "BUG: haDia=1e-9 passa no cadastro e o plano da fazenda dá 500 (Fila estoura antes do teste de 365 dias)")]
+    // colhedora com haDia minúsculo passa na validação (> 0); o plano tem que barrar antes da Fila estourar AddDays
+    [Fact]
     public async Task Capacidade_minuscula_da_400_no_plano_da_fazenda()
     {
         var (c, f) = await Fazenda(70, 1e-9, 10);
         Assert.Equal(HttpStatusCode.BadRequest, (await c.GetAsync($"/fazendas/{f}/plano-colheita?inicio=2026-01-05")).StatusCode);
     }
 
-    [Fact(Skip = "BUG: /plano-colheita com haDia=1e-9 dá 500 (Colheita.Dias/Fim estouram)")]
+    [Fact]
     public async Task Capacidade_minuscula_da_400_sem_cadastro()
     {
         var r = await api.Anonimo().GetAsync($"/plano-colheita?{Ponto}&inicio=2026-01-05&area=100&haDia=1e-9");
         Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
     }
 
-    // haDia e uteis negativos se cancelam (capacidade positiva) e uteis > 100 passa direto
-    [Theory(Skip = "BUG: /plano-colheita não valida haDia < 0, uteis < 0 nem uteis > 100")]
+    // haDia e uteis negativos se cancelariam (capacidade positiva); uteis > 100 e area <= 0 também não valem
+    [Theory]
     [InlineData("&haDia=-60&uteis=-70")]
     [InlineData("&uteis=500")]
     [InlineData("&colhedoras=-1&haDia=-60")]
+    [InlineData("&uteis=-1")]
+    [InlineData("&haDia=0")]
     public async Task Parametros_negativos_ou_acima_de_100_dao_400(string q)
     {
         var r = await api.Anonimo().GetAsync($"/plano-colheita?{Ponto}&inicio=2026-01-05&area=100{q}");
@@ -198,7 +200,7 @@ public class BordasTests(ApiFabrica api, ITestOutputHelper saida)
     }
 
     // mesmo talhão, mesma capacidade: sem cadastro tem que dar os mesmos dias que a fazenda
-    [Fact(Skip = "BUG: /plano-colheita area=9.9 haDia=10 uteis=33 dá 4 dias, a fazenda dá 3 (Colheita.Dias sem tolerância)")]
+    [Fact]
     public async Task Sem_cadastro_e_fazenda_concordam_com_capacidade_fracionaria()
     {
         var (c, f) = await Fazenda(33, 10, 9.9);

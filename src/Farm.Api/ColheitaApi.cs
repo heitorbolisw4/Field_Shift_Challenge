@@ -21,8 +21,12 @@ static class ColheitaApi
             double cad = 30, double riscoMax = 0.2, string fonteChuva = "auto", string aguaInicial = "auto") =>
         {
             if (area is null && fim is null) return Results.BadRequest("informe area (fim calculado pela capacidade) ou fim");
+            if (area is <= 0) return Results.BadRequest("area deve ser maior que zero");
+            if (haDia <= 0 || colhedoras < 1 || uteis is <= 0 or > 100)
+                return Results.BadRequest("haDia > 0, colhedoras >= 1 e uteis entre 0 e 100");
             var capacidade = Colheita.Capacidade(haDia * colhedoras, uteis);
-            if (fim is null && capacidade <= 0) return Results.BadRequest("capacidade de colheita precisa ser maior que zero");
+            // checa antes de Dias/Fim: com capacidade minúscula os dias passam de int e AddDays estoura
+            if (fim is null && area!.Value / capacidade > 365) return Results.BadRequest("a colheita precisa durar de 1 a 365 dias");
             var f = fim ?? Colheita.Fim(inicio, Colheita.Dias(area!.Value, capacidade));
             if (f < inicio || f.DayNumber - inicio.DayNumber >= 365) return Results.BadRequest("a colheita precisa durar de 1 a 365 dias");
 

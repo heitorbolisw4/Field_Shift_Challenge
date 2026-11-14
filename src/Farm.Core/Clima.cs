@@ -8,7 +8,8 @@ public static class Clima
         double phi = latGraus * Math.PI / 180;                         // latitude em radianos
         double dr = 1 + 0.033 * Math.Cos(2 * Math.PI * J / 365);       // distância Terra-Sol
         double delta = 0.409 * Math.Sin(2 * Math.PI * J / 365 - 1.39); // declinação solar
-        double ws = Math.Acos(-Math.Tan(phi) * Math.Tan(delta));       // ângulo do pôr do sol
+        // ângulo do pôr do sol; perto dos polos o argumento sai de [-1, 1] (dia/noite polar) e o Acos daria NaN
+        double ws = Math.Acos(Math.Clamp(-Math.Tan(phi) * Math.Tan(delta), -1, 1));
         return 24 * 60 / Math.PI * 0.0820 * dr *
                (ws * Math.Sin(phi) * Math.Sin(delta) + Math.Cos(phi) * Math.Cos(delta) * Math.Sin(ws));
     }
@@ -28,7 +29,7 @@ public static class Clima
         // saldo de radiação (eq. 37 a 40)
         double z = (293 - 293 * Math.Pow(d.Pressao / 101.3, 1 / 5.26)) / 0.0065; // altitude a partir da pressão
         double rso = (0.75 + 2e-5 * z) * Ra(d.Data, latGraus);       // radiação de céu limpo
-        double rsRso = Math.Min(d.Rad / rso, 1.0);
+        double rsRso = rso > 0 ? Math.Min(d.Rad / rso, 1.0) : 1.0;   // noite polar: rso = 0
         double rns = 0.77 * d.Rad;                                    // onda curta líquida (albedo 0,23)
         double rnl = 4.903e-9 * (Math.Pow(d.TMax + 273.16, 4) + Math.Pow(d.TMin + 273.16, 4)) / 2
                      * (0.34 - 0.14 * Math.Sqrt(ea)) * (1.35 * rsRso - 0.35); // onda longa perdida

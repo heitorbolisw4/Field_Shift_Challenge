@@ -64,7 +64,7 @@ public class FilaTests
     }
 
     // capacidade minúscula (mas > 0): os dias passam de int e AddDays estoura.
-    // Na API: colhedora com haDia=1e-9 passa na validação (> 0) e o plano dá 500 (ver PlanoBordasTests).
+    // Contrato: quem chama checa área/capacidade <= 365 antes (FazendaApi faz; ver BordasTests).
     [Fact]
     public void Capacidade_minuscula_estoura_antes_do_limite_de_365_dias()
     {
@@ -107,9 +107,8 @@ public class FilaTests
 
     // ---------- Dias (usado por /plano-colheita sem cadastro) ----------
 
-    // Fila tem tolerância (eps) e Dias não: 9,9 / 3,3 = 3,0000000000000004 → Ceiling = 4.
-    // /plano-colheita?area=9.9&haDia=10&uteis=33 diz 4 dias (o 4º com 0 ha); a fazenda com o mesmo talhão diz 3.
-    [Theory(Skip = "BUG: Colheita.Dias sem tolerância: Dias(9.9, 3.3) = 4 (Fila dá 3)")]
+    // 9,9 / 3,3 = 3,0000000000000004: sem tolerância o Ceiling daria 4 dias (o 4º com 0 ha) e a Fila dá 3
+    [Theory]
     [InlineData(10, 33, 9.9, 3)]
     [InlineData(7, 10, 2.1, 3)]
     [InlineData(3, 10, 2.1, 7)]
@@ -176,9 +175,8 @@ public class FilaTests
         Assert.Equal(75, t0.Ha);
     }
 
-    // área com 3 casas (a API aceita areaHa=10,125): o arredondamento AwayFromZero leva a soma para 10,13 > área.
-    // O comentário de Agrupar diz "nunca passa dela".
-    [Fact(Skip = "BUG pequeno: área com 3 casas (10,125) vira 10,13 nos trechos e passa da área")]
+    // área com 3 casas (a API aceita areaHa=10,125): arredondar para o mais perto daria 10,13 > área
+    [Fact]
     public void Area_com_tres_casas_nao_passa_da_area()
     {
         var e = Assert.Single(Colheita.Fila(D0, [10.125], 50));
@@ -197,4 +195,32 @@ public class FilaTests
         Assert.Equal(100, t.Ha);
         Assert.Equal(4, t.Dias);
     }
+}
+
+// polo: Ra/ET0 não podem virar NaN (dia e noite polar)
+public class PoloTests
+{
+    [Theory]
+    [InlineData(90, 6, 21)]    // dia polar no norte
+    [InlineData(90, 12, 21)]   // noite polar no norte
+    [InlineData(-90, 6, 21)]
+    [InlineData(-90, 12, 21)]
+    [InlineData(89.9, 3, 20)]
+    public void Ra_e_Et0_finitos_nos_polos(double lat, int mes, int dia)
+    {
+        var d = new Dia(new DateOnly(2001, mes, dia), 10, 0, 0, 0, 70, 2, 100);
+        Assert.True(double.IsFinite(Clima.Ra(d.Data, lat)));
+        Assert.True(Clima.Ra(d.Data, lat) >= -1e-9);
+        Assert.True(double.IsFinite(Clima.Et0(d, lat)));
+        Assert.True(double.IsFinite(Clima.Et0Pm(d, lat)));
+    }
+
+    [Theory]
+    [InlineData(1.1, 0.1, 11)]
+    [InlineData(0.07, 0.01, 7)]
+    [InlineData(1e-6, 50, 1)]   // migalha ainda é 1 dia
+    [InlineData(0, 50, 0)]
+    [InlineData(-5, 50, 0)]
+    [InlineData(10, 0, 0)]
+    public void Dias_bordas(double area, double cap, int dias) => Assert.Equal(dias, Colheita.Dias(area, cap));
 }
