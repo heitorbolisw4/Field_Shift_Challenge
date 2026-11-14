@@ -14,10 +14,11 @@ public static class Modelo
     public const double P = 0.55;
 
     // balanço hídrico dia a dia com balde de solo; null se faltar dado no ciclo
-    public static Safra? Simular(Cultura c, Dictionary<DateOnly, Dia> dias, DateOnly ini, double lat, double cad, double fatorChuva = 1, bool usarPm = false)
+    // aguaIni: fração da CAD cheia no dia do plantio (1 = cheio; o SMAP dá o valor observado)
+    public static Safra? Simular(Cultura c, Dictionary<DateOnly, Dia> dias, DateOnly ini, double lat, double cad, double fatorChuva = 1, bool usarPm = false, double aguaIni = 1)
     {
         double etc = 0, chuva = 0, deficit = 0;
-        double agua = cad;   // SUPOSIÇÃO: solo cheio no plantio (fim das águas). v2: GLDAS/SMAP
+        double agua = Math.Clamp(aguaIni, 0, 1) * cad;
         int diasSede = 0;
         var etm = new double[5];   // água desejada por fase (índice 1 a 4)
         var etr = new double[5];   // água consumida por fase

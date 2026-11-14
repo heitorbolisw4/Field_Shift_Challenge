@@ -11,6 +11,19 @@ app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = web });  // "/" abr
 app.UseStaticFiles(new StaticFileOptions { FileProvider = web });
 
 Imerg.Pasta = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "imerg"));
+Smap.Pasta = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "smap"));
+
+// água no balde no dia do plantio: "cheio" (CAD toda) ou "smap" (umidade observada; dia sem dado -> cheio)
+// "auto": smap se a cidade tem CSV do SMAP, senão cheio. Devolve o modo usado de fato (null = valor inválido).
+string? Agua(string aguaInicial, double lat, double lon) => aguaInicial switch
+{
+    "auto" => Smap.Fc(lat, lon) is null ? "cheio" : "smap",
+    "cheio" or "smap" => aguaInicial,
+    _ => null
+};
+double AguaIni(string aguaInicial, double lat, double lon, DateOnly plantio) =>
+    aguaInicial == "smap" ? Smap.Fracao(lat, lon, plantio) ?? 1 : 1;
+const string AguaErro = "aguaInicial deve ser auto, cheio ou smap";
 
 // clima diário do POWER; com fonteChuva=imerg, a chuva vem do CSV do IMERG. null = não tem IMERG para esse ponto.
 // "auto": IMERG se tiver CSV do pixel, senão POWER. Devolve também a fonte usada de fato.
@@ -48,8 +61,10 @@ app.MapGet("/clima", async (double lat, double lon, IHttpClientFactory http, str
 // cad padrão 30: calibrado contra o ZARC com chuva do IMERG
 // passo 5/6: déficit de UMA cultura plantada numa data, ano a ano (com balde de solo)
 // ex.: /deficit?lat=-19.03&lon=-47.92&plantio=02-15&cultura=milho&cad=30
-app.MapGet("/deficit", async (double lat, double lon, string plantio, string cultura, IHttpClientFactory http, double cad = 30, double fatorChuva = 1, string et0 = "pm", string fonteChuva = "auto") =>
+app.MapGet("/deficit", async (double lat, double lon, string plantio, string cultura, IHttpClientFactory http, double cad = 30, double fatorChuva = 1, string et0 = "pm", string fonteChuva = "auto", string aguaInicial = "auto") =>
 {
+    if (Agua(aguaInicial, lat, lon) is not { } agua) return Results.BadRequest(AguaErro);
+    aguaInicial = agua;
     if (!Culturas.Todas.TryGetValue(cultura, out var c))
         return Results.BadRequest($"cultura desconhecida: {cultura}");
 
@@ -62,7 +77,7 @@ app.MapGet("/deficit", async (double lat, double lon, string plantio, string cul
     foreach (var ano in dias.Keys.Select(d => d.Year).Distinct().Order())
     {
         var ini = new DateOnly(ano, md.Month, Math.Min(md.Day, DateTime.DaysInMonth(ano, md.Month))); // 29/02 em ano normal
-        var s = Modelo.Simular(c, dias, ini, lat, cad, fatorChuva, et0 == "pm");
+        var s = Modelo.Simular(c, dias, ini, lat, cad, fatorChuva, et0 == "pm", AguaIni(aguaInicial, lat, lon, ini));
         if (s is null) continue; // ciclo passou do fim dos dados
 
         anos.Add(new { ano, etc = Math.Round(s.Etc), chuva = Math.Round(s.Chuva),
@@ -72,15 +87,18 @@ app.MapGet("/deficit", async (double lat, double lon, string plantio, string cul
                        passaZarc = Modelo.Passa(c, s, "isna") });
     }
 
-    return Results.Ok(new { cultura = c.Nome, plantio, ciclo = c.Ciclo, cad, fatorChuva, et0, fonteChuva, anos });
+    return Results.Ok(new { cultura = c.Nome, plantio, ciclo = c.Ciclo, cad, fatorChuva, et0, fonteChuva, aguaInicial, anos });
 });
 
 // passo 10: calendário por DECÊNDIO (blocos de 10 dias, como o ZARC), com nível de risco
 // ex.: /recomendacao?lat=-19.03&lon=-47.92&inicio=01-20&fim=03-20
 app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string fim, IHttpClientFactory http,
                                    double cad = 30, double fatorChuva = 1, string et0 = "pm",
-                                   string criterio = "isna", double riscoMax = 0.2, string fonteChuva = "auto") =>
+                                   string criterio = "isna", double riscoMax = 0.2, string fonteChuva = "auto",
+                                   string aguaInicial = "auto") =>
 {
+    if (Agua(aguaInicial, lat, lon) is not { } agua) return Results.BadRequest(AguaErro);
+    aguaInicial = agua;
     var inv = CultureInfo.InvariantCulture;
     var di = DateOnly.ParseExact($"2001-{inicio}", "yyyy-MM-dd", inv); // 2001: ano qualquer, não bissexto
     var df = DateOnly.ParseExact($"2001-{fim}", "yyyy-MM-dd", inv);
@@ -107,7 +125,7 @@ app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string
                 foreach (var a in anos)
                 {
                     var plantio = new DateOnly(a, p.Month, p.Day); // cada decêndio usa os mesmos 10 anos, com ou sem virada de ano
-                    var s = Modelo.Simular(c, dias, plantio, lat, cad, fatorChuva, et0 == "pm");
+                    var s = Modelo.Simular(c, dias, plantio, lat, cad, fatorChuva, et0 == "pm", AguaIni(aguaInicial, lat, lon, plantio));
                     if (s is null) continue;                 // ciclo passou do fim dos dados
                     total++;
                     if (!Modelo.Passa(c, s, criterio)) falhas++;
@@ -128,7 +146,7 @@ app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string
         d = fimDec.AddDays(1);
     }
 
-    return Results.Ok(new { cad, et0, criterio, riscoMax, fonteChuva, decendios });
+    return Results.Ok(new { cad, et0, criterio, riscoMax, fonteChuva, aguaInicial, decendios });
 });
 
 app.Run();
