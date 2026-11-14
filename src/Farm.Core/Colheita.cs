@@ -10,6 +10,14 @@ public static class Colheita
     // ha colhidos por dia de calendário: ha/dia de todas as colhedoras × fração de dias úteis (chuva, quebra)
     public static double Capacidade(double haDiaTotal, double uteisPct) => haDiaTotal * uteisPct / 100;
 
+    // tetos de entrada: 1000 ha/dia por colhedora já é o dobro da maior do mercado. Com o teto, a tolerância
+    // de 1e-9 dia de Dias/Fila descarta no máximo HaDiaMax × ColhedorasMax × 1e-9 = 1e-4 ha (abaixo do 0,01 exibido)
+    public const double HaDiaMax = 1000;
+    public const int ColhedorasMax = 100;
+
+    // a colheita passa de `dias` dias? Mesma tolerância de Dias, sem calcular Dias (com capacidade minúscula ele estoura int)
+    public static bool PassaDe(double area, double capacidade, int dias) => area / capacidade - 1e-9 > dias;
+
     // mesma tolerância da Fila: 9,9 / 3,3 = 3,0000000000000004 são 3 dias, não 4
     public static int Dias(double area, double capacidade) =>
         capacidade > 0 && area > 0 ? Math.Max(1, (int)Math.Ceiling(area / capacidade - 1e-9)) : 0;

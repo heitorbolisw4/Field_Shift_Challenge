@@ -112,8 +112,8 @@ public class ConsistenciaTests(ApiFabrica api)
     }
 
     // área que dá 365 dias por Dias (com a tolerância) mas cujo área/capacidade em double passa de 365
-    // por ruído (ex.: capacidade 3,3 = 10 × 33 / 100). A checagem nova (área / capacidade > 365) não tem a tolerância.
-    [Fact(Skip = "BUG: checagem 'area / capacidade > 365' sem a tolerância de Dias/Fila: 365 dias exatos com capacidade ruidosa dão 400")]
+    // por ruído (haDia=0,1 uteis=86 area=31,39). As duas rotas checam com Colheita.PassaDe, que tem a tolerância de Dias.
+    [Fact]
     public async Task Ruido_de_ponto_flutuante_no_limite_de_365()
     {
         var (haDia, uteis, area) = AchaRuidoEm365();
@@ -157,6 +157,9 @@ public class ConsistenciaTests(ApiFabrica api)
     [InlineData("area=100&haDia=1e-300")]
     [InlineData("area=Infinity")]
     [InlineData("area=1e308&haDia=1e-308")]  // área/capacidade = Infinity
+    [InlineData("area=100&haDia=1000.0001")] // teto de haDia
+    [InlineData("area=100&haDia=1e9")]
+    [InlineData("area=100&colhedoras=101")]  // teto de colhedoras
     [InlineData("fim=2026-01-04")]           // fim antes do início
     [InlineData("fim=2027-01-05")]           // 366 dias
     public async Task Bordas_que_dao_400(string q)
@@ -169,7 +172,7 @@ public class ConsistenciaTests(ApiFabrica api)
     [InlineData("area=100&uteis=100")]
     [InlineData("area=100&uteis=99.999999999")]
     [InlineData("area=1e-9")]                  // migalha: 1 dia, 0,00 ha
-    [InlineData("area=0.01&haDia=1e9")]        // capacidade enorme: 1 dia
+    [InlineData("area=0.01&haDia=1000&colhedoras=100")] // teto exato: 1 dia
     [InlineData("area=100&colhedoras=1")]
     [InlineData("area=100&uteis=0.5&haDia=60")] // 0,3 ha/dia: 334 dias, cabe
     [InlineData("fim=2026-01-05")]             // 1 dia, sem área
@@ -186,14 +189,65 @@ public class ConsistenciaTests(ApiFabrica api)
 
     // NaN passa em todas as comparações (NaN <= 0 é falso, NaN > 365 é falso): a validação nova não pega.
     // O binding aceita "NaN" e "Infinity" em double. Resultado esperado: 400, não 500 nem 200 com lixo.
-    [Theory(Skip = "BUG: /plano-colheita aceita NaN/Infinity em area/haDia/uteis (comparações com NaN são falsas); vira 500 ou 200 com dados sem sentido")]
+    [Theory]
     [InlineData("area=NaN")]
     [InlineData("area=100&haDia=NaN")]
     [InlineData("area=100&uteis=NaN")]
     [InlineData("area=100&haDia=Infinity")]
+    [InlineData("area=100&uteis=-Infinity")]
+    [InlineData("fim=2026-02-01&cad=NaN")]
+    [InlineData("fim=2026-02-01&riscoMax=NaN")]
     public async Task NaN_e_Infinity_dao_400(string q)
     {
         var r = await api.Anonimo().GetAsync($"/plano-colheita?{Ponto}&inicio={Inicio}&{q}");
         Assert.True(r.StatusCode == HttpStatusCode.BadRequest, $"{q} -> {(int)r.StatusCode}: {await r.Content.ReadAsStringAsync()}");
+    }
+
+    // o mesmo filtro cobre /recomendacao e /deficit
+    [Theory]
+    [InlineData("/recomendacao?inicio=01-01&fim=01-10&cad=NaN")]
+    [InlineData("/recomendacao?inicio=01-01&fim=01-10&riscoMax=NaN")]
+    [InlineData("/recomendacao?inicio=01-01&fim=01-10&fatorChuva=Infinity")]
+    [InlineData("/deficit?plantio=02-15&cultura=milho&cad=-Infinity")]
+    [InlineData("/deficit?plantio=02-15&cultura=milho&fatorChuva=NaN")]
+    public async Task NaN_em_outras_rotas_da_400(string url)
+    {
+        var r = await api.Anonimo().GetAsync($"{url}&{Ponto}");
+        Assert.True(r.StatusCode == HttpStatusCode.BadRequest, $"{url} -> {(int)r.StatusCode}");
+    }
+
+    // corpo JSON: "NaN" como texto (o binding web lê número de string) ou literal; tem que dar 400, nunca 201/500
+    [Theory]
+    [InlineData("colhedoras", """{"nome":"C","haDia":"NaN"}""")]
+    [InlineData("colhedoras", """{"nome":"C","haDia":"Infinity"}""")]
+    [InlineData("colhedoras", """{"nome":"C","haDia":NaN}""")]
+    [InlineData("colhedoras", """{"nome":"C","haDia":1000.0001}""")]
+    [InlineData("talhoes", """{"nome":"T","areaHa":"Infinity"}""")]
+    [InlineData("talhoes", """{"nome":"T","areaHa":10,"lat":"NaN","lon":0}""")]
+    public async Task Corpo_com_numero_ruim_da_400(string rota, string corpo)
+    {
+        var c = await api.Cliente();
+        var f = (await c.PostOk("/fazendas", new { nome = "F", lat = Lat, lon = Lon })).Id();
+        var r = await c.PostAsync($"/fazendas/{f}/{rota}", new StringContent(corpo, System.Text.Encoding.UTF8, "application/json"));
+        Assert.True(r.StatusCode == HttpStatusCode.BadRequest, $"{corpo} -> {(int)r.StatusCode}: {await r.Content.ReadAsStringAsync()}");
+    }
+
+    [Theory]
+    [InlineData("""{"nome":"F","diasUteisPct":"NaN"}""")]
+    [InlineData("""{"nome":"F","riscoMax":"NaN"}""")]
+    [InlineData("""{"nome":"F","lat":"NaN","lon":"NaN"}""")]
+    public async Task Fazenda_com_numero_ruim_da_400(string corpo)
+    {
+        var c = await api.Cliente();
+        var r = await c.PostAsync("/fazendas", new StringContent(corpo, System.Text.Encoding.UTF8, "application/json"));
+        Assert.True(r.StatusCode == HttpStatusCode.BadRequest, $"{corpo} -> {(int)r.StatusCode}: {await r.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task Colhedora_no_teto_passa()
+    {
+        var c = await api.Cliente();
+        var f = (await c.PostOk("/fazendas", new { nome = "F", lat = Lat, lon = Lon })).Id();
+        await c.PostOk($"/fazendas/{f}/colhedoras", new { nome = "C", haDia = Colheita.HaDiaMax });
     }
 }

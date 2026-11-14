@@ -151,15 +151,33 @@ public class PropriedadesTests
         InvariantesDoPiso(t, area, $"area={area:R} cap={cap:R}");
     }
 
-    // a tolerância de Dias/Fila é em DIAS (1e-9), não em ha: com capacidade gigante o resto some.
-    // 1e8 ha/dia e 1e8 + 0,05 ha: 1,0000000005 dia vira 1 dia e 0,05 ha não são colhidos.
-    // Irreal (ninguém colhe 1e8 ha/dia), mas a API aceita haDia sem teto.
-    [Fact(Skip = "BUG: eps de 1e-9 dia em Dias/Fila descarta até cap×1e-9 ha (0,05 ha com cap=1e8); sem teto de haDia na API")]
-    public void Capacidade_gigante_nao_perde_area()
+    // a tolerância de Dias/Fila é em DIAS (1e-9), não em ha: o resto descartado é até cap × 1e-9 ha.
+    // Com o teto da API (HaDiaMax × ColhedorasMax = 1e5 ha/dia) isso fica em 1e-4 ha: nunca muda o 0,01 exibido.
+    [Theory]
+    [InlineData(0.01)] [InlineData(0.05)] [InlineData(1)]
+    public void Capacidade_no_teto_nao_perde_area(double sobra)
     {
-        double cap = 1e8, area = 1e8 + 0.05;
-        var t = Colheita.Trechos(D0, Colheita.Fim(D0, Colheita.Dias(area, cap)), Cultura, area, cap);
-        InvariantesDoPiso(t, area, "cap gigante");
+        double cap = Colheita.HaDiaMax * Colheita.ColhedorasMax;
+        foreach (int n in new[] { 1, 2, 7, 365 })
+        {
+            var area = n * cap + sobra;
+            var t = Colheita.Trechos(D0, Colheita.Fim(D0, Colheita.Dias(area, cap)), Cultura, area, cap);
+            InvariantesDoPiso(t, area, $"cap no teto, n={n} sobra={sobra}");
+        }
+    }
+
+    // PassaDe usa a mesma tolerância de Dias: passa de N dias exatamente quando Dias > N
+    [Fact]
+    public void PassaDe_concorda_com_Dias()
+    {
+        var r = new Random(81);
+        for (int i = 0; i < 20000; i++)
+        {
+            var cap = CapacidadeSorteada(r);
+            int n = r.Next(1, 366);
+            var area = r.Next(2) == 0 ? Math.Round(n * cap, 2) : AreaSorteada(r, cap * 400);
+            Assert.True(Colheita.PassaDe(area, cap, 365) == (Colheita.Dias(area, cap) > 365), $"area={area:R} cap={cap:R}");
+        }
     }
 
     // ---------- Ra: clamp ----------

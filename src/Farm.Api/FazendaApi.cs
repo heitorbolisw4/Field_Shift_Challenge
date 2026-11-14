@@ -55,9 +55,9 @@ static class FazendaApi
     static string? Validar(FazendaIn f) =>
         string.IsNullOrWhiteSpace(f.Nome) ? "nome é obrigatório"
         : (f.Lat is null) != (f.Lon is null) ? "informe lat e lon juntos"
-        : f.Lat is < -90 or > 90 || f.Lon is < -180 or > 180 ? "lat/lon fora do intervalo"
-        : f.DiasUteisPct is <= 0 or > 100 ? "diasUteisPct deve ficar entre 0 e 100"
-        : f.RiscoMax is < 0 or > 1 ? "riscoMax deve ficar entre 0 e 1 (0,2 = 20%)"
+        : f.Lat is not (null or (>= -90 and <= 90)) || f.Lon is not (null or (>= -180 and <= 180)) ? "lat/lon fora do intervalo"
+        : f.DiasUteisPct is not (null or (> 0 and <= 100)) ? "diasUteisPct deve ficar entre 0 e 100"
+        : f.RiscoMax is not (null or (>= 0 and <= 1)) ? "riscoMax deve ficar entre 0 e 1 (0,2 = 20%)"
         : null;
 
     // GeoJSON -> anel externo (lon, lat). Aceita Polygon ou Feature com Polygon.
@@ -82,7 +82,7 @@ static class FazendaApi
         var classe = (i.ClasseSolo ?? Solos.Padrao).ToUpperInvariant();
         if (!Solos.Valida(classe)) return "classeSolo deve ser AD1 … AD6";
         if ((i.Lat is null) != (i.Lon is null)) return "informe lat e lon juntos";
-        if (i.Lat is < -90 or > 90 || i.Lon is < -180 or > 180) return "lat/lon fora do intervalo";
+        if (i.Lat is not (null or (>= -90 and <= 90)) || i.Lon is not (null or (>= -180 and <= 180))) return "lat/lon fora do intervalo"; // NaN cai aqui
 
         double? lat = i.Lat, lon = i.Lon, area = i.AreaHa;
         string? geo = null;
@@ -94,7 +94,7 @@ static class FazendaApi
             area ??= Math.Round(Geo.AreaHa(anel), 2);
             geo = geometria.GetRawText();
         }
-        if (area is not > 0) return "areaHa deve ser maior que zero (ou mande o polígono)";
+        if (area is not > 0 || !double.IsFinite(area.Value)) return "areaHa deve ser maior que zero (ou mande o polígono)";
 
         t.Nome = i.Nome.Trim();
         t.AreaHa = area.Value;
@@ -176,7 +176,8 @@ static class FazendaApi
         // ---- colhedoras ----
         fz.MapPost("/{id:int}/colhedoras", async Task<Results<Created<ColhedoraOut>, NotFound, BadRequest<string>>> (int id, ColhedoraIn i, FarmDb db, HttpContext ctx) =>
         {
-            if (string.IsNullOrWhiteSpace(i.Nome) || i.HaDia <= 0) return TypedResults.BadRequest("nome é obrigatório e haDia deve ser maior que zero");
+            if (string.IsNullOrWhiteSpace(i.Nome) || i.HaDia is not (> 0 and <= Colheita.HaDiaMax))
+                return TypedResults.BadRequest($"nome é obrigatório e haDia deve ficar entre 0 e {Colheita.HaDiaMax}");
             if (!await DoDono(db, ctx).AnyAsync(f => f.Id == id)) return TypedResults.NotFound();
             var c = new Colhedora { FazendaId = id, Nome = i.Nome.Trim(), HaDia = i.HaDia };
             db.Add(c);
@@ -187,7 +188,8 @@ static class FazendaApi
         var ch = app.MapGroup("/colhedoras").WithTags("Colhedora").RequireAuthorization();
         ch.MapPut("/{id:int}", async Task<Results<Ok<ColhedoraOut>, NotFound, BadRequest<string>>> (int id, ColhedoraIn i, FarmDb db, HttpContext ctx) =>
         {
-            if (string.IsNullOrWhiteSpace(i.Nome) || i.HaDia <= 0) return TypedResults.BadRequest("nome é obrigatório e haDia deve ser maior que zero");
+            if (string.IsNullOrWhiteSpace(i.Nome) || i.HaDia is not (> 0 and <= Colheita.HaDiaMax))
+                return TypedResults.BadRequest($"nome é obrigatório e haDia deve ficar entre 0 e {Colheita.HaDiaMax}");
             var d = Dono(ctx);
             if (await db.Colhedoras.FirstOrDefaultAsync(c => c.Id == id && c.Fazenda.DonoId == d) is not { } c) return TypedResults.NotFound();
             c.Nome = i.Nome.Trim(); c.HaDia = i.HaDia;
@@ -260,7 +262,7 @@ static class FazendaApi
             var fila = f.Talhoes.OrderBy(t => pos.GetValueOrDefault(t.Id, int.MaxValue)).ThenBy(t => t.Id).ToList();
 
             // checa antes da Fila: com capacidade minúscula os dias passam de int e AddDays estoura
-            if (fila.Sum(t => t.AreaHa) / capacidade > 365) return TypedResults.BadRequest("a colheita passaria de 365 dias: confira áreas e colhedoras");
+            if (Colheita.PassaDe(fila.Sum(t => t.AreaHa), capacidade, 365)) return TypedResults.BadRequest("a colheita passaria de 365 dias: confira áreas e colhedoras");
 
             // fila com capacidade contínua: o talhão seguinte aproveita a sobra do dia em que o anterior termina
             var etapas = Colheita.Fila(inicio, fila.Select(t => t.AreaHa).ToList(), capacidade);
