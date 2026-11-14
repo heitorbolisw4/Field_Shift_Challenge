@@ -1,5 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Camada de domínio: só cálculo, sem HTTP e sem rede. É o que os testes vão cobrir. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

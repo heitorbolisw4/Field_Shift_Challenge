@@ -487,3 +487,4 @@ obj/
 .vs/
 *.bak
 *.user
+.backup/

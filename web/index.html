@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Safrinha Certa</title>
+  <!-- React direto do CDN: sem npm, sem build. htm faz o papel do JSX. -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f6f7f9; color: #1a1a1a; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .sub { color: #555; margin: 0 0 16px; font-size: 14px; }
+    form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; background: #fff; padding: 12px; border-radius: 8px; }
+    label { display: flex; flex-direction: column; font-size: 13px; gap: 4px; }
+    input, select, button { font-size: 15px; padding: 6px 8px; }
+    button { background: #0b57d0; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+    button:disabled { opacity: .5; }
+    .resumo { margin: 16px 0; padding: 12px; background: #fff; border-left: 4px solid #0b57d0; border-radius: 4px; }
+    .tabela { overflow-x: auto; }
+    table { border-collapse: collapse; background: #fff; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: center; font-size: 13px; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; font-weight: 600; }
+    .legenda { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; }
+    .legenda span { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 4px; }
+    .erro { color: #b00020; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    const html = htm.bind(React.createElement);
+    const { useState } = React;
+
+    // mesmas cores do Painel do ZARC
+    const COR = { "20%": "#2e8b2e", "30%": "#f2d600", "40%": "#e53935", "inapto": "#e0e0e0" };
+    const TEXTO = { "20%": "#fff", "30%": "#000", "40%": "#fff", "inapto": "#777" };
+
+    // Triângulo Mineiro: sede do município, coordenada aproximada.
+    // O pixel do POWER tem ~50 km, então erro de alguns km aqui não muda nada.
+    const CIDADES = [
+      ["Indianópolis", -19.03, -47.92],
+      ["Uberlândia",   -18.92, -48.28],
+      ["Araguari",     -18.65, -48.19],
+      ["Uberaba",      -19.75, -47.93],
+    ];
+
+    // "2026-02-15" (input date) -> "02-15" (formato da API)
+    const mesDia = (iso) => iso.slice(5);
+
+    // junta decêndios seguidos com a mesma recomendação: "milho de 01/01 a 31/01"
+    function resumir(decendios) {
+      const trechos = [];
+      for (const d of decendios) {
+        const [de, , ate] = d.decendio.split(" ");
+        const ult = trechos[trechos.length - 1];
+        if (ult && ult.cultura === d.recomendacao) ult.ate = ate;
+        else trechos.push({ cultura: d.recomendacao, de, ate });
+      }
+      return trechos;
+    }
+
+    function App() {
+      const [cidade, setCidade] = useState("Indianópolis");
+      const [lat, setLat] = useState("-19.03");
+      const [lon, setLon] = useState("-47.92");
+      const [inicio, setInicio] = useState("2027-01-01");
+      const [fim, setFim] = useState("2027-03-31");
+      const [cad, setCad] = useState("47");
+      const [riscoMax, setRiscoMax] = useState("0.2");
+      const [dados, setDados] = useState(null);
+      const [carregando, setCarregando] = useState(false);
+      const [erro, setErro] = useState("");
+
+      // trocar a cidade preenche lat/lon; "outra" deixa digitar à mão
+      function escolherCidade(nome) {
+        setCidade(nome);
+        const c = CIDADES.find(x => x[0] === nome);
+        if (c) { setLat(String(c[1])); setLon(String(c[2])); }
+      }
+
+      async function calcular(e) {
+        e.preventDefault();
+        setCarregando(true); setErro(""); setDados(null);
+        try {
+          const q = new URLSearchParams({ lat, lon, inicio: mesDia(inicio), fim: mesDia(fim), cad, riscoMax });
+          const r = await fetch("/recomendacao?" + q);
+          if (!r.ok) throw new Error(await r.text());
+          setDados(await r.json());
+        } catch (err) {
+          setErro("Falhou: " + err.message);
+        } finally {
+          setCarregando(false);
+        }
+      }
+
+      const culturas = dados ? Object.keys(dados.decendios[0].risco) : [];
+
+      return html`
+        <h1>Safrinha Certa</h1>
+        <p className="sub">Depois da soja, o que plantar? Risco climático com 10 anos de dados da NASA (POWER), critério do ZARC.</p>
+
+        <form onSubmit=${calcular}>
+          <label>Município
+            <select value=${cidade} onChange=${e => escolherCidade(e.target.value)}>
+              ${CIDADES.map(c => html`<option key=${c[0]} value=${c[0]}>${c[0]}</option>`)}
+              <option value="outra">Outra (lat/lon)</option>
+            </select>
+          </label>
+          <label>Latitude <input value=${lat} onChange=${e => { setCidade("outra"); setLat(e.target.value); }} size="7" /></label>
+          <label>Longitude <input value=${lon} onChange=${e => { setCidade("outra"); setLon(e.target.value); }} size="7" /></label>
+          <label>Colheita da soja: início <input type="date" value=${inicio} onChange=${e => setInicio(e.target.value)} /></label>
+          <label>fim <input type="date" value=${fim} onChange=${e => setFim(e.target.value)} /></label>
+          <label>Solo
+            <select value=${cad} onChange=${e => setCad(e.target.value)}>
+              <option value="30">Arenoso (30 mm)</option>
+              <option value="47">Médio (47 mm)</option>
+              <option value="72">Argiloso (72 mm)</option>
+            </select>
+          </label>
+          <label>Risco aceito
+            <select value=${riscoMax} onChange=${e => setRiscoMax(e.target.value)}>
+              <option value="0.2">20%</option>
+              <option value="0.3">30%</option>
+              <option value="0.4">40%</option>
+            </select>
+          </label>
+          <button disabled=${carregando}>${carregando ? "Baixando 10 anos da NASA..." : "Calcular"}</button>
+        </form>
+
+        ${erro && html`<div className="erro">${erro}</div>`}
+
+        ${dados && html`
+          <div className="resumo">
+            <strong>Recomendação:</strong>${" "}
+            ${resumir(dados.decendios).map((t, i) => html`
+              <span key=${i}>${i > 0 ? " · " : ""}<b>${t.cultura}</b> de ${t.de} a ${t.ate}</span>`)}
+          </div>
+
+          <div className="tabela">
+            <table>
+              <thead>
+                <tr><th>Plantio</th>${dados.decendios.map(d => html`<th key=${d.decendio}>${d.decendio}</th>`)}</tr>
+              </thead>
+              <tbody>
+                ${culturas.map(c => html`
+                  <tr key=${c}>
+                    <td>${c}</td>
+                    ${dados.decendios.map(d => html`
+                      <td key=${d.decendio}
+                          style=${{ background: COR[d.nivel[c]], color: TEXTO[d.nivel[c]] }}
+                          title=${"risco calculado: " + Math.round(d.risco[c] * 100) + "%"}>
+                        ${d.nivel[c]}
+                      </td>`)}
+                  </tr>`)}
+                <tr>
+                  <td>Recomendado</td>
+                  ${dados.decendios.map(d => html`<td key=${d.decendio}><b>${d.recomendacao}</b></td>`)}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="legenda">
+            <div><span style=${{ background: COR["20%"] }}></span>Menor risco (20%)</div>
+            <div><span style=${{ background: COR["30%"] }}></span>Risco médio (30%)</div>
+            <div><span style=${{ background: COR["40%"] }}></span>Maior risco (40%)</div>
+            <div><span style=${{ background: COR["inapto"] }}></span>Não indicado</div>
+          </div>
+        `}
+      `;
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+  </script>
+</body>
+</html>
