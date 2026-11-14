@@ -3,6 +3,9 @@
     <Project Path="src/Farm.Api/Farm.Api.csproj" />
     <Project Path="src/Farm.Core/Farm.Core.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Farm.Core.Tests/Farm.Core.Tests.csproj" />
+  </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Farm.Imerg/Farm.Imerg.csproj" />
   </Folder>

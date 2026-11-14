@@ -1,11 +1,12 @@
 # tests
 
-Reservado para `Farm.Core.Tests` (xUnit).
+`Farm.Core.Tests` (xUnit): testa só o `Farm.Core`, sem rede.
 
-O alvo é o `Farm.Core`: Ra, ET0, curva de Kc e o balanço hídrico.
-Tudo ali é cálculo puro, então dá para testar com valores das tabelas da FAO-56, sem rede.
+    dotnet test tests/Farm.Core.Tests
 
-Para criar:
-    dotnet new xunit -o tests/Farm.Core.Tests
-    dotnet add tests/Farm.Core.Tests reference src/Farm.Core
-    dotnet sln add tests/Farm.Core.Tests
+- `ClimaTests`: Ra e ET0 contra os exemplos 8 e 18 da FAO-56, e Hargreaves feito à mão.
+- `CulturaTests`: fases e curva de Kc.
+- `ModeloTests`: balde (nunca < 0, nunca > CAD), Ks, ISNA do ZARC, perda FAO-33, faixas de risco.
+
+Fora do alcance: a janela por decêndio (com virada de ano) está em `Farm.Api/Program.cs`,
+e a divisão de hectares está no `web/index.html`. Para testar, mover essa lógica para o `Farm.Core`.
