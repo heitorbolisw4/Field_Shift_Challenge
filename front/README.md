@@ -13,6 +13,9 @@ O Vite repassa `/auth`, `/fazendas`, `/talhoes`... para a API (ver `vite.config.
 ## Testes e build
 
 - `npm test`: Vitest + Testing Library (cliente da API, renovação do token, telas).
+- `npm run e2e`: Playwright contra a Farm.Api de verdade (sobe a API na porta 5197 com um SQLite temporário e o Vite na 5174;
+  não toca no `data/farm.db`). Usa o Chromium já instalado do Playwright 1.57. "Colhi" e o plano buscam o clima da NASA (precisa de internet).
+- Testes marcados `it.skip("BUG: ...")` / `test.fixme("BUG: ...")` são bugs encontrados e ainda não corrigidos.
 - `npm run build`: confere os tipos e gera `front/dist` (arquivos estáticos).
 
 ## Hospedar
