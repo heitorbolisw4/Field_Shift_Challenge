@@ -122,7 +122,7 @@ public class ColheitaTests
     public void Trechos_AreaQuebradaNaoPassaDoTotal()
     {
         var t = Colheita.Trechos(new DateOnly(2026, 2, 9), new DateOnly(2026, 2, 11), _ => "milho", area: 116.88, capacidade: 42);
-        Assert.Equal(116.9, Assert.Single(t).Ha);
+        Assert.Equal(116.88, Assert.Single(t).Ha);
     }
 
     [Fact]
@@ -132,6 +132,43 @@ public class ColheitaTests
             d => d.Day % 2 == 0 ? "a" : "b", area: 1000, capacidade: 10);
         Assert.Equal(["b", "a", "b", "a"], t.Select(x => x.Cultura));
         Assert.All(t, x => Assert.Equal(10, x.Ha));
+    }
+
+    [Fact]
+    public void Fila_SobraDoDiaPassaParaOProximo()
+    {
+        var ini = new DateOnly(2026, 1, 5);
+        var f = Colheita.Fila(ini, [20, 20, 20], 50);
+        Assert.Equal([(ini, ini), (ini, ini), (ini, ini.AddDays(1))], f.Select(e => (e.De, e.Ate))); // 20 + 20 + 10 no dia 1
+        Assert.Equal([0.0, 20, 40], f.Select(e => e.HaAntes));
+    }
+
+    [Fact]
+    public void Fila_TalhaoQueFechaODiaNaoInvadeOSeguinte()
+    {
+        var ini = new DateOnly(2026, 1, 5);
+        var f = Colheita.Fila(ini, [50, 50], 50);
+        Assert.Equal(ini, f[0].Ate);
+        Assert.Equal(ini.AddDays(1), f[1].De);
+    }
+
+    [Fact]
+    public void TrechosDaFila_SomamAAreaECortamOsDias()
+    {
+        var ini = new DateOnly(2026, 1, 5);
+        var f = Colheita.Fila(ini, [20, 20, 20], 50);
+        var t = Colheita.Trechos(ini, f[2], 50, d => d == ini ? "milho" : "sorgo");
+        Assert.Equal([("milho", 10.0), ("sorgo", 10.0)], t.Select(x => (x.Cultura, x.Ha))); // 40 ha do dia 1 já foram
+    }
+
+    [Fact]
+    public void Trechos_ArredondamentoNaoPassaDaArea()
+    {
+        // 3 trechos de 3,333... ha: a soma fecha em 10 (não 9,99 nem 10,01)
+        var ini = new DateOnly(2026, 1, 1);
+        var t = Colheita.Trechos(ini, ini.AddDays(2), d => d.Day.ToString(), area: 10, capacidade: 10.0 / 3);
+        Assert.Equal(10, Colheita.Somar(t.Select(x => x.Ha)));
+        Assert.All(t, x => Assert.InRange(x.Ha, 3.33, 3.34));
     }
 
     [Fact]

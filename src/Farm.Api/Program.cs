@@ -35,6 +35,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         ValidIssuer = jwt.Emissor, ValidAudience = jwt.Publico, IssuerSigningKey = chave,
         ValidAlgorithms = [SecurityAlgorithms.HmacSha256], ClockSkew = TimeSpan.FromMinutes(1),
     };
+    // conta apagada: o JWT ainda é válido até expirar, então confere se o usuário existe a cada requisição
+    o.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async ctx =>
+        {
+            var sub = ctx.Principal?.FindFirst("sub")?.Value;
+            var db = ctx.HttpContext.RequestServices.GetRequiredService<FarmDb>();
+            if (sub is null || !await db.Usuarios.AnyAsync(u => u.Id == sub)) ctx.Fail("usuário não existe mais");
+        }
+    };
 });
 builder.Services.AddAuthorization();
 
@@ -88,7 +98,7 @@ app.MapGet("/clima", async (double lat, double lon, IHttpClientFactory http, str
         });
 
     return Results.Ok(new { fonteChuva, validos = validos.Count, porMes });
-});
+}).ComCoordenadas();
 
 // cad padrão 30: calibrado contra o ZARC com chuva do IMERG
 // passo 5/6: déficit de UMA cultura plantada numa data, ano a ano (com balde de solo)
@@ -100,7 +110,7 @@ app.MapGet("/deficit", async (double lat, double lon, string plantio, string cul
     if (!Culturas.Todas.TryGetValue(cultura, out var c))
         return Results.BadRequest($"cultura desconhecida: {cultura}");
 
-    var md = DateOnly.ParseExact($"2000-{plantio}", "yyyy-MM-dd", CultureInfo.InvariantCulture); // "02-15" vira mês/dia
+    if (MesDia(plantio) is not { } md) return Results.BadRequest("plantio no formato MM-dd (ex.: 02-15)"); // "02-15" vira mês/dia
     (var lista, fonteChuva) = await Dados(http, lat, lon, fonteChuva);
     if (lista is null) return SemImerg(lat, lon, fonteChuva);
     var dias = lista.ToDictionary(d => d.Data);
@@ -120,7 +130,7 @@ app.MapGet("/deficit", async (double lat, double lon, string plantio, string cul
     }
 
     return Results.Ok(new { cultura = c.Nome, plantio, ciclo = c.Ciclo, cad, fatorChuva, et0, fonteChuva, aguaInicial, anos });
-});
+}).ComCoordenadas();
 
 // passo 10: calendário por DECÊNDIO (blocos de 10 dias, como o ZARC), com nível de risco
 // ex.: /recomendacao?lat=-19.03&lon=-47.92&inicio=01-20&fim=03-20
@@ -129,9 +139,7 @@ app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string
                                    string criterio = "isna", double riscoMax = 0.2, string fonteChuva = "auto",
                                    string aguaInicial = "auto") =>
 {
-    var inv = CultureInfo.InvariantCulture;
-    var di = DateOnly.ParseExact($"2001-{inicio}", "yyyy-MM-dd", inv); // 2001: ano qualquer, não bissexto
-    var df = DateOnly.ParseExact($"2001-{fim}", "yyyy-MM-dd", inv);
+    if ((MesDia(inicio), MesDia(fim)) is not (DateOnly di, DateOnly df)) return Results.BadRequest("inicio e fim no formato MM-dd (ex.: 02-15)");
 
     var (cal, erro) = await CalendarioAsync(http, lat, lon, di, df, cad, riscoMax, fonteChuva, aguaInicial, criterio, fatorChuva, et0);
     if (cal is null) return erro!;
@@ -144,7 +152,7 @@ app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string
     });
 
     return Results.Ok(new { cad, et0, criterio, riscoMax, fonteChuva = cal.FonteChuva, aguaInicial = cal.AguaInicial, decendios });
-});
+}).ComCoordenadas();
 
 app.MapColheita();
 app.MapAuth();

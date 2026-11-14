@@ -9,7 +9,8 @@ public class Usuario
 }
 
 // refresh token: o app troca por um JWT novo sem pedir a senha. Guardado só o hash (SHA-256).
-// Cada uso gera um novo e revoga o antigo; usar um já revogado derruba todos do usuário (token vazado).
+// Cada uso gera um novo e revoga o antigo; reusar um já trocado derruba todos do usuário (token vazado).
+// Um token encerrado por "sair" só dá 401 (app que tenta de novo não é roubo).
 public class RefreshToken
 {
     public int Id { get; set; }
@@ -18,4 +19,5 @@ public class RefreshToken
     public DateTimeOffset ExpiraEm { get; set; }
     public DateTimeOffset CriadoEm { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? RevogadoEm { get; set; }
+    public string? Motivo { get; set; }                  // por que foi revogado: "rotacao", "saida" ou "vazamento"
 }

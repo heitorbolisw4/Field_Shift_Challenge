@@ -93,9 +93,8 @@ public class RecomendacaoTests(ApiFabrica api)
         Assert.Equal(antes + 1, api.Power.Chamadas);
     }
 
-    // BUG: lat/lon não são validados. Com o PC em pt-BR, "-15,55" vira -1555 (vírgula lida como separador de milhar)
-    // e a conta roda com uma latitude impossível; com o POWER real, vira 500. Deveria ser 400.
-    [Theory(Skip = "BUG: /recomendacao (e /clima, /deficit, /plano-colheita) aceitam lat/lon fora do intervalo")]
+    // lat/lon: vírgula decimal (PC em pt-BR leria "-15,55" como -1555) ou fora do intervalo -> 400
+    [Theory]
     [InlineData("lat=-15,55&lon=-55,55")]
     [InlineData("lat=95&lon=0")]
     [InlineData("lat=0&lon=200")]
@@ -105,17 +104,15 @@ public class RecomendacaoTests(ApiFabrica api)
         Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
     }
 
-    // trava o comportamento atual do bug acima (para perceber quando for corrigido)
-    [Fact]
-    public async Task Hoje_lat_com_virgula_passa_como_milhar()
-    {
-        var r = await api.Anonimo().GetAsync("/recomendacao?lat=-15,55&lon=-55,55&inicio=01-01&fim=01-10");
-        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
-    }
+    [Theory]
+    [InlineData("/clima?lat=-15,55&lon=-55,55")]
+    [InlineData("/deficit?lat=95&lon=0&plantio=02-15&cultura=milho")]
+    [InlineData("/plano-colheita?lat=0&lon=200&inicio=2026-02-01&area=100")]
+    public async Task Outras_rotas_tambem_validam_lat_lon(string url) =>
+        Assert.Equal(HttpStatusCode.BadRequest, (await api.Anonimo().GetAsync(url)).StatusCode);
 
-    // BUG: inicio/fim são lidos com DateOnly.ParseExact sem tratamento: 29/02 (data real de plantio/colheita
-    // em ano bissexto) e qualquer formato errado derrubam a rota com 500. Deveria ser 200 (29/02 = 28/02) ou 400.
-    [Theory(Skip = "BUG: /recomendacao com inicio/fim inválido ou 02-29 dá 500")]
+    // inicio/fim: 29/02 vira 28/02 (200); formato errado dá 400, nunca 500
+    [Theory]
     [InlineData("inicio=02-29&fim=02-29", HttpStatusCode.OK)]
     [InlineData("inicio=2-5&fim=03-01", HttpStatusCode.BadRequest)]
     [InlineData("inicio=13-01&fim=03-01", HttpStatusCode.BadRequest)]

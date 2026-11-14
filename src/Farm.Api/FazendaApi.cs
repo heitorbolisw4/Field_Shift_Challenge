@@ -259,29 +259,30 @@ static class FazendaApi
                 .Select((s, k) => (ok: int.TryParse(s, out var n), n, k)).Where(x => x.ok).GroupBy(x => x.n).ToDictionary(g => g.Key, g => g.First().k);
             var fila = f.Talhoes.OrderBy(t => pos.GetValueOrDefault(t.Id, int.MaxValue)).ThenBy(t => t.Id).ToList();
 
-            var cursor = inicio;
+            // fila com capacidade contínua: o talhão seguinte aproveita a sobra do dia em que o anterior termina
+            var etapas = Colheita.Fila(inicio, fila.Select(t => t.AreaHa).ToList(), capacidade);
+            if (etapas[^1].Ate.DayNumber - inicio.DayNumber >= 365) return TypedResults.BadRequest("a colheita passaria de 365 dias: confira áreas e colhedoras");
+
             var talhoes = new List<TalhaoPlano>();
-            foreach (var t in fila)
+            foreach (var (t, e) in fila.Zip(etapas))
             {
                 if ((t.Lat ?? f.Lat, t.Lon ?? f.Lon) is not (double lat, double lon))
                     return TypedResults.BadRequest($"talhão \"{t.Nome}\" sem coordenada: informe lat/lon ou polígono (ou lat/lon na fazenda)");
-                var fim = Colheita.Fim(cursor, Colheita.Dias(t.AreaHa, capacidade));
-                if (fim.DayNumber - inicio.DayNumber >= 365) return TypedResults.BadRequest("a colheita passaria de 365 dias: confira áreas e colhedoras");
 
-                var (cal, erro) = await CalendarioAsync(http, lat, lon, cursor, fim, Solos.Cad[t.ClasseSolo], f.RiscoMax, fonteChuva, aguaInicial);
+                var (cal, erro) = await CalendarioAsync(http, lat, lon, e.De, e.Ate, Solos.Cad[t.ClasseSolo], f.RiscoMax, fonteChuva, aguaInicial);
                 if (cal is null) return erro!;
-                var trechos = Colheita.Trechos(cursor, fim, d => cal.NoDia(d)!.Recomendacao, t.AreaHa, capacidade)
+                var trechos = Colheita.Trechos(inicio, e, capacidade, d => cal.NoDia(d)!.Recomendacao)
                     .Select(x => new ColheitaApi.TrechoOut(x.Cultura, x.De, x.Ate, x.Dias, x.Ha)).ToList();
-                talhoes.Add(new(t.Id, t.Nome, t.ClasseSolo, t.AreaHa, cursor, fim, fim.DayNumber - cursor.DayNumber + 1, trechos));
-                cursor = fim.AddDays(1);
+                talhoes.Add(new(t.Id, t.Nome, t.ClasseSolo, t.AreaHa, e.De, e.Ate, e.Dias, trechos));
             }
             var totais = talhoes.SelectMany(t => t.Trechos).GroupBy(x => x.Cultura)
-                .Select(g => new TotalCultura(g.Key, Math.Round(g.Sum(x => x.Ha ?? 0), 1))).OrderByDescending(x => x.Ha).ToList();
-            return TypedResults.Ok(new PlanoFazendaOut(f.Id, inicio, cursor.AddDays(-1), Math.Round(capacidade, 2), talhoes, totais));
+                .Select(g => new TotalCultura(g.Key, Colheita.Somar(g.Select(x => x.Ha ?? 0)))).OrderByDescending(x => x.Ha).ToList();
+            return TypedResults.Ok(new PlanoFazendaOut(f.Id, inicio, etapas[^1].Ate, Math.Round(capacidade, 2), talhoes, totais));
         })
         .WithTags("Colheita")
         .WithSummary("Plano de colheita da fazenda: cada talhão, quando é colhido e quantos ha vão para cada cultura")
-        .WithDescription("Talhões colhidos em sequência com a capacidade somada das colhedoras × diasUteisPct. " +
+        .WithDescription("Talhões colhidos em sequência com a capacidade somada das colhedoras × diasUteisPct; " +
+                         "se um talhão termina no meio do dia, o próximo começa no mesmo dia com a sobra. " +
                          "`ordem` = ids separados por vírgula (os não citados vêm depois, por ordem de cadastro). " +
                          "Cada talhão usa a própria classe de solo e coordenada.")
         .Produces<PlanoFazendaOut>().Produces(StatusCodes.Status404NotFound).Produces<string>(StatusCodes.Status400BadRequest);

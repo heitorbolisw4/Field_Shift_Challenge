@@ -43,21 +43,22 @@ public class PlanoTests(ApiFabrica api)
         var ts = p.GetProperty("talhoes").EnumerateArray().ToList();
         Assert.Equal(ids, ts.Select(t => t.GetProperty("talhaoId").GetInt32()));       // ordem de cadastro
 
-        // 500/50 = 10 dias, 375/50 = 7,5 → 8, 150/50 = 3; um começa no dia seguinte ao fim do outro
-        Assert.Equal([10, 8, 3], ts.Select(t => t.GetProperty("dias").GetInt32()));
+        // 500/50 = 10 dias exatos; 375 vai do dia 11 até a metade do dia 18 (8 dias);
+        // 150 aproveita a outra metade do dia 18 e vai até o dia 21 (4 dias). Total 1025/50 = 20,5 → 21 dias.
+        Assert.Equal([10, 8, 4], ts.Select(t => t.GetProperty("dias").GetInt32()));
         Assert.Equal(new DateOnly(2026, 1, 5), ts[0].Data("de"));
-        for (int i = 1; i < ts.Count; i++) Assert.Equal(ts[i - 1].Data("ate").AddDays(1), ts[i].Data("de"));
+        Assert.Equal(ts[0].Data("ate").AddDays(1), ts[1].Data("de")); // o 1º fechou o dia
+        Assert.Equal(ts[1].Data("ate"), ts[2].Data("de"));            // o 3º começa no dia em que o 2º termina
         Assert.Equal(new DateOnly(2026, 1, 25), p.Data("fim"));
         foreach (var t in ts) Assert.Equal(t.Data("ate").DayNumber - t.Data("de").DayNumber + 1, t.GetProperty("dias").GetInt32());
 
-        // trechos cobrem o talhão sem buraco, ha = dias × capacidade (o último leva o resto) e a soma é a área
+        // trechos cobrem o talhão sem buraco e a soma é a área
         foreach (var t in ts)
         {
             var tr = t.GetProperty("trechos").EnumerateArray().ToList();
             Assert.Equal(t.Data("de"), tr[0].Data("de"));
             Assert.Equal(t.Data("ate"), tr[^1].Data("ate"));
             for (int i = 1; i < tr.Count; i++) Assert.Equal(tr[i - 1].Data("ate").AddDays(1), tr[i].Data("de"));
-            for (int i = 0; i < tr.Count - 1; i++) Assert.Equal(tr[i].GetProperty("dias").GetInt32() * 50.0, tr[i].GetProperty("ha").GetDouble());
             Assert.Equal(t.GetProperty("areaHa").GetDouble(), SomaHa(t.GetProperty("trechos")), 6);
         }
 
@@ -161,50 +162,41 @@ public class PlanoTests(ApiFabrica api)
         Assert.Equal(HttpStatusCode.NotFound, (await c.GetAsync("/fazendas/999999/plano-colheita?inicio=2026-01-15")).StatusCode);
     }
 
-    // ---------- borda conhecida: sobra de capacidade do último dia se perde ----------
+    // ---------- sobra de capacidade passa para o próximo talhão ----------
 
-    // 3 talhões de 20 ha, 50 ha/dia: a fazenda colheria 60 ha em 2 dias, mas o plano gasta 3 (um dia por talhão).
-    // Documentado como simplificação no docs/api-fazenda.md, mas o efeito cresce com talhões pequenos:
-    // 20 talhões de 10 ha com 100 ha/dia = 20 dias no plano contra 2 de capacidade, e os últimos talhões caem
-    // em decêndios mais tardios, o que muda a cultura recomendada. Este teste trava o comportamento ATUAL.
     [Fact]
-    public async Task Borda_proximo_talhao_so_comeca_no_dia_seguinte()
+    public async Task Plano_usa_a_capacidade_cheia()
     {
         var (c, f, _) = await Fazenda(100, [50], (20, "AD3"), (20, "AD3"), (20, "AD3"));
         var p = await c.GetOk($"/fazendas/{f}/plano-colheita?inicio=2026-01-05");
-        Assert.Equal(new DateOnly(2026, 1, 7), p.Data("fim"));                       // 3 dias
-        Assert.All(p.GetProperty("talhoes").EnumerateArray(), t => Assert.Equal(1, t.GetProperty("dias").GetInt32()));
+        Assert.Equal(new DateOnly(2026, 1, 6), p.Data("fim"));                       // 60 ha a 50 ha/dia = 2 dias
+        var t = p.GetProperty("talhoes").EnumerateArray().ToList();
+        Assert.Equal(new DateOnly(2026, 1, 5), t[1].Data("de"));                      // 20 + 20 cabem no 1º dia
+        Assert.Equal(new DateOnly(2026, 1, 5), t[1].Data("ate"));
+        Assert.Equal(new DateOnly(2026, 1, 5), t[2].Data("de"));                      // 3º: 10 ha no dia 1, 10 no dia 2
+        Assert.Equal(new DateOnly(2026, 1, 6), t[2].Data("ate"));
+        Assert.All(t, x => Assert.Equal(20, SomaHa(x.GetProperty("trechos")), 6));
 
-        // a mesma área sem cadastro (um bloco só) leva 2 dias
+        // igual à mesma área sem cadastro (um bloco só)
         var s = await c.GetOk($"/plano-colheita?lat={Http.Q(Lat)}&lon={Http.Q(Lon)}&inicio=2026-01-05&area=60&haDia=50&uteis=100");
         Assert.Equal(2, s.GetProperty("dias").GetInt32());
     }
 
     [Fact]
-    public async Task Borda_muitos_talhoes_pequenos_esticam_o_plano()
+    public async Task Muitos_talhoes_pequenos_nao_esticam_o_plano()
     {
         var talhoes = Enumerable.Range(0, 20).Select(_ => (10.0, "AD3")).ToArray();
         var (c, f, _) = await Fazenda(100, [100], talhoes);
         var p = await c.GetOk($"/fazendas/{f}/plano-colheita?inicio=2026-01-15");
-        var dias = p.Data("fim").DayNumber - new DateOnly(2026, 1, 15).DayNumber + 1;
-        Assert.Equal(20, dias); // capacidade daria 2
-        // e a cultura muda ao longo desses 20 dias (o decêndio de 21/01 em diante já é outro)
-        Assert.True(p.GetProperty("totais").GetArrayLength() >= 2);
-    }
-
-    [Fact(Skip = "BORDA/BUG de modelo: sobra de capacidade não passa para o próximo talhão (ver teste acima)")]
-    public async Task Desejado_plano_usa_a_capacidade_cheia()
-    {
-        var (c, f, _) = await Fazenda(100, [50], (20, "AD3"), (20, "AD3"), (20, "AD3"));
-        var p = await c.GetOk($"/fazendas/{f}/plano-colheita?inicio=2026-01-05");
-        Assert.Equal(new DateOnly(2026, 1, 6), p.Data("fim"));
+        Assert.Equal(new DateOnly(2026, 1, 16), p.Data("fim"));                      // 200 ha a 100 ha/dia = 2 dias
+        Assert.Equal(200, p.GetProperty("totais").EnumerateArray().Sum(x => x.GetProperty("ha").GetDouble()), 6);
     }
 
     // ---------- arredondamento: soma dos ha não pode passar da área ----------
 
     // Colheita.Trechos arredonda o resto do último trecho a 0,1 ha (AwayFromZero): área 10,37 vira 10,4.
     // Polígono dá área com 2 casas, então acontece de verdade. Excesso máximo 0,05 ha por talhão.
-    [Fact(Skip = "BUG pequeno: soma dos trechos passa da área por arredondamento (10,37 ha → 10,4)")]
+    [Fact]
     public async Task Totais_nunca_passam_da_area()
     {
         var (c, f, _) = await Fazenda(100, [50], (10.37, "AD3"), (33.35, "AD3"));
@@ -215,11 +207,11 @@ public class PlanoTests(ApiFabrica api)
     }
 
     [Fact]
-    public async Task Hoje_soma_passa_da_area_por_arredondamento()
+    public async Task Soma_dos_trechos_e_exatamente_a_area()
     {
         var (c, f, _) = await Fazenda(100, [50], (10.37, "AD3"));
         var p = await c.GetOk($"/fazendas/{f}/plano-colheita?inicio=2026-01-05");
-        Assert.Equal(10.4, SomaHa(p.GetProperty("talhoes")[0].GetProperty("trechos")), 6);
+        Assert.Equal(10.37, SomaHa(p.GetProperty("talhoes")[0].GetProperty("trechos")), 6);
     }
 
     // ---------- /plano-colheita (sem cadastro) ----------

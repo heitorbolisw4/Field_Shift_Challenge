@@ -17,28 +17,81 @@ public static class Colheita
     public static DateOnly Fim(DateOnly inicio, int dias) => inicio.AddDays(Math.Max(dias - 1, 0));
 
     // percorre a colheita dia a dia, pega a cultura de cada dia e junta dias seguidos iguais.
-    // ha por trecho = dias × capacidade, sem passar da área total (arredondado a 0,1 ha)
+    // ha por dia = capacidade, sem passar da área total (o último dia pode ser parcial)
     public static List<Trecho> Trechos(DateOnly inicio, DateOnly fim, Func<DateOnly, string> culturaDoDia,
                                        double area, double capacidade)
     {
-        var dias = new List<(string Cultura, DateOnly De, DateOnly Ate, int Dias)>();
+        var dias = new List<(DateOnly, string, double)>();
         for (var d = inicio; d <= fim; d = d.AddDays(1))
         {
-            var c = culturaDoDia(d);
-            if (dias.Count > 0 && dias[^1].Cultura == c) dias[^1] = dias[^1] with { Ate = d, Dias = dias[^1].Dias + 1 };
-            else dias.Add((c, d, d, 1));
+            int k = d.DayNumber - inicio.DayNumber;
+            dias.Add((d, culturaDoDia(d), Math.Max(0, Math.Min((k + 1) * capacidade, area) - k * capacidade)));
         }
+        return Agrupar(dias);
+    }
 
-        var resto = area;
-        var trechos = new List<Trecho>();
-        foreach (var t in dias)
+    // talhão dentro da fila de colheita. HaAntes = área colhida antes dele (outros talhões).
+    public record Etapa(DateOnly De, DateOnly Ate, double HaAntes, double Area)
+    {
+        public int Dias => Ate.DayNumber - De.DayNumber + 1;
+    }
+
+    // talhões colhidos um depois do outro com capacidade contínua: se o anterior termina no meio do dia,
+    // o próximo começa no mesmo dia com a capacidade que sobrou
+    public static List<Etapa> Fila(DateOnly inicio, IReadOnlyList<double> areas, double capacidade)
+    {
+        const double eps = 1e-9;
+        double antes = 0;
+        var fila = new List<Etapa>();
+        foreach (var a in areas)
         {
-            var ha = Math.Round(Math.Max(0, Math.Min(t.Dias * capacidade, resto)), 1, MidpointRounding.AwayFromZero);
-            resto -= ha;
-            trechos.Add(new(t.Cultura, t.De, t.Ate, t.Dias, ha));
+            int de = (int)Math.Floor(antes / capacidade + eps);
+            int ate = Math.Max(de, (int)Math.Ceiling((antes + a) / capacidade - eps) - 1);
+            fila.Add(new(inicio.AddDays(de), inicio.AddDays(ate), antes, a));
+            antes += a;
+        }
+        return fila;
+    }
+
+    // trechos de um talhão da fila: em cada dia, a parte da capacidade que cai nele
+    public static List<Trecho> Trechos(DateOnly inicio, Etapa e, double capacidade, Func<DateOnly, string> culturaDoDia)
+    {
+        var dias = new List<(DateOnly, string, double)>();
+        for (var d = e.De; d <= e.Ate; d = d.AddDays(1))
+        {
+            int k = d.DayNumber - inicio.DayNumber;
+            var ha = Math.Min(e.HaAntes + e.Area, (k + 1) * capacidade) - Math.Max(e.HaAntes, k * capacidade);
+            dias.Add((d, culturaDoDia(d), Math.Max(0, ha)));
+        }
+        return Agrupar(dias);
+    }
+
+    // junta dias seguidos com a mesma cultura. Arredonda a 0,01 ha pelo acumulado:
+    // a soma dos trechos é exatamente a área (com 2 casas), nunca passa dela
+    static List<Trecho> Agrupar(List<(DateOnly Dia, string Cultura, double Ha)> dias)
+    {
+        var grupos = new List<(string Cultura, DateOnly De, DateOnly Ate, int Dias, double Ha)>();
+        foreach (var (d, c, ha) in dias)
+            if (grupos.Count > 0 && grupos[^1].Cultura == c)
+                grupos[^1] = grupos[^1] with { Ate = d, Dias = grupos[^1].Dias + 1, Ha = grupos[^1].Ha + ha };
+            else grupos.Add((c, d, d, 1, ha));
+
+        double acumulado = 0;
+        long centAntes = 0;
+        var trechos = new List<Trecho>();
+        foreach (var g in grupos)
+        {
+            acumulado += g.Ha;
+            var cent = (long)Math.Round(acumulado * 100, MidpointRounding.AwayFromZero);
+            trechos.Add(new(g.Cultura, g.De, g.Ate, g.Dias, (cent - centAntes) / 100.0));
+            centAntes = cent;
         }
         return trechos;
     }
+
+    // soma de ha sem erro de ponto flutuante (em centésimos)
+    public static double Somar(IEnumerable<double> ha) =>
+        ha.Sum(x => (long)Math.Round(x * 100, MidpointRounding.AwayFromZero)) / 100.0;
 
     // para cada grão, quantos dias da colheita ficam dentro do risco aceito.
     // riscoDoDia: risco de cada grão no decêndio do dia (null = dia fora do calendário)

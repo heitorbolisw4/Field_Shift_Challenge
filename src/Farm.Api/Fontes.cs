@@ -1,7 +1,24 @@
+using System.Globalization;
+
 // de onde vêm os dados (POWER, IMERG, SMAP) e o calendário de risco de um ponto.
 // Usado por /recomendacao, /plano-colheita e pelos endpoints da fazenda.
 static class Fontes
 {
+    // lat/lon da query: ponto decimal e dentro do intervalo. Com o PC em pt-BR, "-15,55" seria lido como -1555.
+    public static RouteHandlerBuilder ComCoordenadas(this RouteHandlerBuilder b) => b.AddEndpointFilter(async (ctx, next) =>
+    {
+        var q = ctx.HttpContext.Request.Query;
+        foreach (var (nome, max) in new[] { ("lat", 90.0), ("lon", 180.0) })
+            if (!double.TryParse(q[nome].ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) || !(Math.Abs(v) <= max))
+                return Results.BadRequest($"{nome} inválido: use ponto como separador decimal e valor entre -{max} e {max}");
+        return await next(ctx);
+    });
+
+    // "MM-dd" -> data no ano-modelo (29/02 vira 28/02); null se o formato estiver errado
+    public static DateOnly? MesDia(string? s) =>
+        DateOnly.TryParseExact($"2004-{s}", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? Calendario.NoAnoModelo(d) : null;
+
     public const string AguaErro = "aguaInicial deve ser auto, cheio ou smap";
 
     // água no balde no dia do plantio: "cheio" (CAD toda) ou "smap" (umidade observada; dia sem dado -> cheio)

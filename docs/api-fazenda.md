@@ -16,7 +16,8 @@ Documento completo: `/openapi/v1.json`. Tela para testar: `/docs`.
 4. `POST /auth/sair {refreshToken}` encerra a sessão. `GET /auth/eu` mostra a conta.
 
 - Senha: mínimo 8 caracteres, guardada com hash (PBKDF2 do ASP.NET Identity).
-- Refresh token: vale 30 dias, guardado só o hash. Se um refresh já usado aparecer de novo, todas as sessões do usuário caem (sinal de vazamento).
+- Refresh token: vale 30 dias, guardado só o hash. Se um refresh já trocado aparecer de novo, todas as sessões do usuário caem (sinal de vazamento). Um refresh encerrado por `/auth/sair` só dá 401.
+- Conta apagada: o JWT para de valer na hora (a API confere se o usuário existe).
 - `/auth/*`: 10 tentativas por minuto por IP (429 depois disso).
 - Cada usuário só vê as próprias fazendas (outro usuário recebe 404).
 - `/clima`, `/deficit`, `/recomendacao`, `/plano-colheita` e `/solos` continuam abertos.
@@ -47,7 +48,7 @@ Documento completo: `/openapi/v1.json`. Tela para testar: `/docs`.
 | GET | `/fazendas/{id}/plano-colheita?inicio=AAAA-MM-DD&ordem=3,1,2` | talhões colhidos em sequência; ha por cultura |
 | GET | `/plano-colheita?lat&lon&inicio&area` | mesma conta sem cadastro (o que o front fazia em JS) |
 
-Rotas antigas (`/clima`, `/deficit`, `/recomendacao`) continuam iguais.
+Rotas antigas (`/clima`, `/deficit`, `/recomendacao`) continuam iguais. lat/lon com ponto decimal e dentro do intervalo, senão 400. Datas `MM-dd` (29/02 vira 28/02), formato errado dá 400.
 
 ## Talhão
 
@@ -72,4 +73,5 @@ Usa a CAD da classe do talhão e o `riscoMax` da fazenda (padrão 0,2).
 
 - Capacidade = soma de `haDia` das colhedoras × `diasUteisPct` da fazenda (padrão 70%).
 - Um talhão por vez, na `ordem` pedida; cada um com o próprio solo e coordenada.
-- Simplificação: o talhão seguinte começa no dia seguinte (sobra de capacidade do último dia não passa para ele).
+- Capacidade contínua: se um talhão termina no meio do dia, o próximo começa no mesmo dia com a sobra.
+- ha arredondado a 0,01; a soma dos trechos fecha exatamente na área do talhão.

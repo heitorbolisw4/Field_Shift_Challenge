@@ -22,6 +22,7 @@ public class FarmDb(DbContextOptions<FarmDb> options) : DbContext(options)
         m.Entity<RefreshToken>(e =>
         {
             e.Property(r => r.Hash).HasMaxLength(64);
+            e.Property(r => r.Motivo).HasMaxLength(16);
             e.HasIndex(r => r.Hash).IsUnique();
             e.HasIndex(r => r.UsuarioId);
             e.HasOne<Usuario>().WithMany().HasForeignKey(r => r.UsuarioId).OnDelete(DeleteBehavior.Cascade);

@@ -198,10 +198,10 @@ public class AuthTests(ApiFabrica api)
         Assert.Equal(HttpStatusCode.NoContent, (await api.Anonimo().PostAsJsonAsync("/auth/sair", new { refreshToken = "lixo" })).StatusCode);
     }
 
-    // Efeito colateral: depois de "sair" no aparelho A, um renovar atrasado com o refresh de A (ex.: app que tenta de novo)
-    // é tratado como roubo e derruba a sessão do aparelho B. Logout e rotação gravam o mesmo RevogadoEm.
+    // "sair" no aparelho A e depois um renovar atrasado com o refresh de A (app que tenta de novo):
+    // só 401, a sessão do aparelho B continua
     [Fact]
-    public async Task Renovar_depois_de_sair_derruba_as_outras_sessoes()
+    public async Task Renovar_depois_de_sair_nao_derruba_as_outras_sessoes()
     {
         var email = Email();
         var a = await Registrar(email);
@@ -210,7 +210,7 @@ public class AuthTests(ApiFabrica api)
         await api.Anonimo().PostAsJsonAsync("/auth/sair", new { refreshToken = Rt(a) });
         Assert.Equal(HttpStatusCode.Unauthorized, (await Renovar(Rt(a))).StatusCode);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await Renovar(Rt(b))).StatusCode); // sessão B morreu junto
+        Assert.Equal(HttpStatusCode.OK, (await Renovar(Rt(b))).StatusCode); // sessão B segue viva
     }
 
     // ---------- JWT adulterado, expirado, de outra chave ----------
@@ -264,9 +264,9 @@ public class AuthTests(ApiFabrica api)
         }
     }
 
-    // usuário apagado do banco: /auth/eu dá 401, mas as rotas da fazenda só olham o "sub" e aceitam até o JWT expirar
+    // usuário apagado do banco: o JWT ainda não expirou, mas nenhuma rota aceita mais
     [Fact]
-    public async Task Jwt_de_usuario_apagado_ainda_abre_fazendas()
+    public async Task Jwt_de_usuario_apagado_da_401()
     {
         var t = await Registrar(Email());
         var id = t.GetProperty("usuario").GetProperty("id").GetString()!;
@@ -275,7 +275,8 @@ public class AuthTests(ApiFabrica api)
 
         Assert.Equal(HttpStatusCode.Unauthorized, await Eu(At(t)));
         var c = ApiFabrica.ComoDono(api.Anonimo(), At(t));
-        Assert.Equal(HttpStatusCode.Created, (await c.PostAsJsonAsync("/fazendas", new { nome = "fantasma" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await c.PostAsJsonAsync("/fazendas", new { nome = "fantasma" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await c.GetAsync("/fazendas")).StatusCode);
     }
 
     // ---------- rate limit ----------

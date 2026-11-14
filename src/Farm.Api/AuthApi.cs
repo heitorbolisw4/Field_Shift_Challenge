@@ -34,6 +34,7 @@ static class AuthApi
     public record UsuarioOut(string Id, string Email, string? Nome);
 
     public const int SenhaMin = 8;
+    const string Rotacao = "rotacao", Saiu = "saida", Vazamento = "vazamento"; // RefreshToken.Motivo
     static readonly PasswordHasher<Usuario> hasher = new();
     // usuário de mentira: o login sem conta também calcula um hash (sem atalho de tempo)
     static readonly Usuario Falso = Criar();
@@ -101,15 +102,18 @@ static class AuthApi
             var agora = DateTimeOffset.UtcNow;
             if (rt.RevogadoEm is not null)
             {
-                // token já usado de novo: provável vazamento, derruba todas as sessões do usuário
-                await db.RefreshTokens.Where(r => r.UsuarioId == rt.UsuarioId && r.RevogadoEm == null)
-                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.RevogadoEm, agora));
+                // token já trocado aparecendo de novo: provável vazamento, derruba todas as sessões do usuário.
+                // Encerrado por "sair" (ou já derrubado): só 401.
+                if (rt.Motivo == Rotacao)
+                    await db.RefreshTokens.Where(r => r.UsuarioId == rt.UsuarioId && r.RevogadoEm == null)
+                        .ExecuteUpdateAsync(s => s.SetProperty(r => r.RevogadoEm, agora).SetProperty(r => r.Motivo, Vazamento));
                 return TypedResults.Unauthorized();
             }
             if (rt.ExpiraEm <= agora) return TypedResults.Unauthorized();
             if (await db.Usuarios.FindAsync(rt.UsuarioId) is not { } u) return TypedResults.Unauthorized();
 
             rt.RevogadoEm = agora;  // rotação: cada refresh token vale uma vez
+            rt.Motivo = Rotacao;
             return TypedResults.Ok(await Emitir(u, db, o));
         }).WithSummary("Troca o refresh token por um JWT novo (o refresh antigo deixa de valer)");
 
@@ -117,7 +121,7 @@ static class AuthApi
         {
             var hash = Hash(i.RefreshToken ?? "");
             await db.RefreshTokens.Where(r => r.Hash == hash && r.RevogadoEm == null)
-                .ExecuteUpdateAsync(s => s.SetProperty(r => r.RevogadoEm, DateTimeOffset.UtcNow));
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.RevogadoEm, DateTimeOffset.UtcNow).SetProperty(r => r.Motivo, Saiu));
             return TypedResults.NoContent();
         }).WithSummary("Revoga o refresh token (o JWT atual vale até expirar)");
 

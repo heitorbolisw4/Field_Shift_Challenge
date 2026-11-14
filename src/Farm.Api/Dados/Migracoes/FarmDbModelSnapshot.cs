@@ -142,6 +142,10 @@ namespace Farm.Api.Dados.Migracoes
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Motivo")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("RevogadoEm")
                         .HasColumnType("TEXT");
 

@@ -36,6 +36,7 @@ static class ColheitaApi
             return Results.Ok(new PlanoOut(inicio, f, f.DayNumber - inicio.DayNumber + 1, Math.Round(capacidade, 2), area, cad, riscoMax,
                 cal.FonteChuva, cal.AguaInicial, trechos, graos, cal.Decendios.Select(Saida).ToList()));
         })
+        .ComCoordenadas()
         .WithTags("Colheita")
         .WithSummary("Quanto tempo leva a colheita da soja e quantos ha vão para cada cultura da safrinha")
         .WithDescription("Sem cadastro. Com `area`, o fim sai da capacidade (haDia × colhedoras × uteis%). Com `fim`, usa a data informada. " +
