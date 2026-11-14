@@ -1,5 +1,5 @@
 // Rodada independente: lerNumero (entrada pt-BR do celular), commit ee683a9.
-// it.skip("BUG: ...") = bug encontrado e não corrigido (convenção do projeto: os testes só relatam).
+// it.skip("BUG: ...") = bug encontrado e não corrigido; "corrigido: ..." = era bug, virou critério de aceite.
 import { describe, expect, it } from "vitest";
 import { lerNumero } from "../util";
 
@@ -39,17 +39,17 @@ describe("lerNumero: o que o produtor digita", () => {
 });
 
 describe("lerNumero: ambiguidades do ponto", () => {
-  it.skip("BUG: '1.500' (mil e quinhentos, como se escreve em pt-BR) vira 1,5", () => {
+  it("'1.500' (mil e quinhentos, como se escreve em pt-BR) vira 1,5", () => {
     // Sem vírgula, o ponto é tratado como decimal. Uma fazenda de "1.500" ha vira 1,5 ha sem aviso nenhum.
     expect(lerNumero("1.500")).toBe(1500);
   });
 
-  it.skip("BUG: '1.000.000' é recusado, mas '1.000' é aceito (como 1): o mesmo jeito de escrever dá resultados diferentes", () => {
+  it("'1.000.000' é recusado, mas '1.000' é aceito (como 1): o mesmo jeito de escrever dá resultados diferentes", () => {
     expect(lerNumero("1.000.000")).toBe(1000000);
     expect(lerNumero("1.000")).toBe(1000);
   });
 
-  it.skip("BUG: pontos fora do lugar com vírgula são aceitos em silêncio ('1.2,5' -> 12,5; '10,5.3' -> 10,53)", () => {
+  it("pontos fora do lugar com vírgula são aceitos em silêncio ('1.2,5' -> 12,5; '10,5.3' -> 10,53)", () => {
     // Com vírgula, todos os pontos são apagados sem conferir se estão de 3 em 3 dígitos.
     expect(lerNumero("1.2,5")).toBeNull();
     expect(lerNumero("10,5.3")).toBeNull();

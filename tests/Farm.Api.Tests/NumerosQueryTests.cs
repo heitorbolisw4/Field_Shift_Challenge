@@ -47,6 +47,18 @@ public class NumerosQueryTests(ApiFabrica api)
         Assert.Equal(HttpStatusCode.BadRequest,
             await Get(api, $"/recomendacao?inicio=01-01&fim=01-10&{Ponto}&riscoMax=0.2&riscoMax=9"));
 
+    // qualquer parâmetro repetido dá 400, mesmo bom e igual, mesmo texto (o binding juntaria com vírgula)
+    [Theory]
+    [InlineData("riscoMax=0.2&riscoMax=0.2")]
+    [InlineData("fonteChuva=power&fonteChuva=power")]
+    [InlineData("cad=30&CAD=30")]
+    public async Task Qualquer_parametro_repetido_da_400(string q)
+    {
+        var r = await api.Anonimo().GetAsync($"/recomendacao?inicio=01-01&fim=01-10&{Ponto}&{q}");
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Contains("repetido", await r.Content.ReadAsStringAsync());
+    }
+
     // o nome do parâmetro não diferencia maiúsculas (o binding também não)
     [Fact]
     public async Task Nome_em_maiusculas_tambem_e_conferido() =>

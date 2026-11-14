@@ -1,5 +1,5 @@
 // Rodada independente de testes do cliente da API (ee683a9): refresh concorrente, refresh vencido, sem rede.
-// it.skip("BUG: ...") = bug encontrado e não corrigido (convenção do projeto: os testes só relatam).
+// it.skip("BUG: ...") = bug encontrado e não corrigido; "corrigido: ..." = era bug, virou critério de aceite.
 import { describe, expect, it } from "vitest";
 import { ApiErro, criarApi } from "../api";
 import { textoErro } from "../contexto";
@@ -66,7 +66,7 @@ describe("refresh concorrente", () => {
     expect(renovacoes(s)).toHaveLength(1);
   });
 
-  it.skip("BUG: abrir o app sem login guardado trava a renovação para sempre (renovando fica com a promessa resolvida)", async () => {
+  it("abrir o app sem login guardado trava a renovação para sempre (renovando fica com a promessa resolvida)", async () => {
     // renovar(): sem refresh guardado, a função async retorna sem nenhum await, então o finally (renovando = null)
     // roda ANTES do `renovando ??= ...` atribuir. renovando fica preso numa promessa resolvida com false.
     const mem = new Memoria();
@@ -85,7 +85,7 @@ describe("refresh concorrente", () => {
     expect(renovacoes(s)).toHaveLength(1);
   });
 
-  it.skip("BUG: mesma trava sem restaurar(): qualquer chamada antes do login (ex.: aba aberta após 'Sair') prende a renovação", async () => {
+  it("mesma trava sem restaurar(): qualquer chamada antes do login (ex.: aba aberta após 'Sair') prende a renovação", async () => {
     const mem = new Memoria();
     const t1 = tokens(), t2 = tokens();
     let jwtVenceu = false;
@@ -110,7 +110,7 @@ describe("refresh concorrente", () => {
     expect(renovacoes(s)).toHaveLength(0);
   });
 
-  it.skip("BUG: 'Sair' durante um refresh em andamento ressuscita a sessão", async () => {
+  it("'Sair' durante um refresh em andamento ressuscita a sessão", async () => {
     // sair() limpa e manda /auth/sair com o refresh velho; o refresh em voo termina depois e guarda o par novo.
     // Na API, /auth/sair com o refresh já rotacionado não revoga nada, então o refresh novo continua valendo.
     const mem = new Memoria();
@@ -292,7 +292,7 @@ describe("sem rede", () => {
     expect(renovacoes(s)[0].corpo).toEqual({ refreshToken: "rt-velho" });
   });
 
-  it.skip("BUG: sem rede quando o JWT venceu, a tela diz 'Entre para continuar.' em vez de 'Sem conexão'", async () => {
+  it("sem rede quando o JWT venceu, a tela diz 'Entre para continuar.' em vez de 'Sem conexão'", async () => {
     // chamar(): renovar() devolve false tanto para 'sem refresh' quanto para 'falha de rede', e vira ApiErro(401).
     const mem = new Memoria();
     let online = true;

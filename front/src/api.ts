@@ -36,6 +36,15 @@ export class ApiErro extends Error {
 }
 
 const CHAVE = "farm.refresh";
+export const SEM_REDE = "Sem conexão com o servidor.";
+
+type Renovacao = "ok" | "sem-sessao" | "sem-rede";
+
+// trava entre abas do mesmo navegador (Web Locks). Sem suporte (navegador velho, testes): só a trava da aba.
+function comTravaEntreAbas<T>(f: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+  return locks?.request ? (locks.request("farm.renovar", f) as Promise<T>) : f();
+}
 
 // mensagem legível de uma resposta de erro (a API manda texto JSON, ex.: "e-mail inválido")
 async function mensagem(r: Response): Promise<string> {
@@ -54,7 +63,8 @@ async function mensagem(r: Response): Promise<string> {
 export function criarApi(fetchFn: typeof fetch = (...a) => fetch(...a), armazenamento: Storage = localStorage) {
   let access: string | null = null;
   let usuario: Usuario | null = null;
-  let renovando: Promise<boolean> | null = null; // um refresh por vez: dois em paralelo derrubariam a sessão (rotação)
+  let renovando: Promise<Renovacao> | null = null; // um refresh por vez: dois em paralelo derrubariam a sessão (rotação)
+  let geracao = 0; // muda a cada "sair": um refresh que estava no ar não pode trazer a sessão de volta
   const ouvintes = new Set<(u: Usuario | null) => void>();
 
   const avisar = () => ouvintes.forEach((f) => f(usuario));
@@ -67,6 +77,7 @@ export function criarApi(fetchFn: typeof fetch = (...a) => fetch(...a), armazena
   }
 
   function limpar() {
+    geracao++;
     access = null;
     usuario = null;
     try { armazenamento.removeItem(CHAVE); } catch { /* modo privado */ }
@@ -83,26 +94,47 @@ export function criarApi(fetchFn: typeof fetch = (...a) => fetch(...a), armazena
     return t;
   }
 
-  // troca o refresh guardado por um par novo; false = sem sessão
-  function renovar(): Promise<boolean> {
-    renovando ??= (async () => {
+  // troca o refresh guardado por um par novo.
+  // Um por vez na aba (promessa compartilhada) e entre abas (navigator.locks): o refresh é lido do aparelho
+  // DENTRO da trava, então a 2ª aba usa o refresh que a 1ª acabou de gravar, nunca o mesmo duas vezes.
+  function renovar(): Promise<Renovacao> {
+    if (renovando) return renovando;
+    const p = comTravaEntreAbas(async (): Promise<Renovacao> => {
       const rt = refreshGuardado();
-      if (!rt) return false;
-      try {
-        await postAuth("/auth/renovar", { refreshToken: rt });
-        return true;
-      } catch (e) {
-        if (e instanceof ApiErro && e.status === 401) limpar(); // refresh vencido ou revogado
-        return false;
-      } finally {
-        renovando = null;
+      if (!rt) {
+        if (usuario) limpar(); // saiu em outra aba: esta aba também sai
+        return "sem-sessao";
       }
-    })();
-    return renovando;
+      const minha = geracao;
+      let r: Response;
+      try {
+        r = await fetchFn("/auth/renovar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: rt }) });
+      } catch {
+        return "sem-rede"; // mantém o refresh guardado: tenta de novo quando a rede voltar
+      }
+      if (r.status === 401) { limpar(); return "sem-sessao"; } // refresh vencido ou revogado
+      if (!r.ok) return "sem-rede";
+      const t = (await r.json()) as Tokens;
+      if (geracao !== minha) {
+        // "sair" aconteceu enquanto o refresh estava no ar: descarta o par novo e revoga na API
+        fetchFn("/auth/sair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: t.refreshToken }) }).catch(() => {});
+        return "sem-sessao";
+      }
+      guardar(t);
+      return "ok";
+    });
+    renovando = p;
+    // limpa a trava depois de atribuir (dentro da função async ela rodaria antes, sem nenhum await no caminho)
+    p.finally(() => { if (renovando === p) renovando = null; }).catch(() => {});
+    return p;
   }
 
   async function chamar<T>(metodo: string, rota: string, corpo?: unknown, tentou = false): Promise<T> {
-    if (!access && !(await renovar())) throw new ApiErro(401, "Entre para continuar.");
+    if (!access) {
+      const r = await renovar();
+      if (r === "sem-rede") throw new ApiErro(0, SEM_REDE);
+      if (r === "sem-sessao") throw new ApiErro(401, "Entre para continuar.");
+    }
     const r = await fetchFn(rota, {
       method: metodo,
       headers: { Authorization: `Bearer ${access}`, ...(corpo !== undefined ? { "Content-Type": "application/json" } : {}) },
@@ -132,7 +164,7 @@ export function criarApi(fetchFn: typeof fetch = (...a) => fetch(...a), armazena
 
     entrar: (email: string, senha: string) => postAuth("/auth/login", { email, senha }),
     registrar: (email: string, senha: string, nome?: string) => postAuth("/auth/registrar", { email, senha, nome: nome || null }),
-    restaurar: renovar, // ao abrir o app: volta a sessão a partir do refresh guardado
+    restaurar: async () => (await renovar()) === "ok", // ao abrir o app: volta a sessão a partir do refresh guardado
     async sair() {
       const rt = refreshGuardado();
       limpar();

@@ -49,11 +49,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 builder.Services.AddAuthorization();
 
 // /auth: 10 tentativas por minuto por IP (atrás de proxy na VPS, precisa de ForwardedHeaders para ver o IP real)
+// Auth:TentativasPorMinuto troca o limite (padrão 10); o E2E do front sobe a API com um limite maior
+var tentativasAuth = builder.Configuration.GetValue("Auth:TentativasPorMinuto", 10);
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "?",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = tentativasAuth, Window = TimeSpan.FromMinutes(1) }));
 });
 
 // banco da fazenda: SQLite em data/farm.db (ConnectionStrings:Farm no appsettings troca o caminho)

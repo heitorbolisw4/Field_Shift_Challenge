@@ -45,12 +45,20 @@ static class Numeros
     public static IApplicationBuilder UseNumerosDaQuery(this IApplicationBuilder app) => app.Use(async (ctx, next) =>
     {
         foreach (var (nome, valores) in ctx.Request.Query)
+        {
+            // parâmetro repetido: o binding junta com vírgula (cad=30&cad=5 vira "30,5" e depois 305). Qualquer nome, número ou não.
+            if (valores.Count > 1)
+            {
+                await Results.BadRequest($"{nome} repetido na query: mande uma vez só").ExecuteAsync(ctx);
+                return;
+            }
             foreach (var texto in valores)
                 if (Validar(nome, texto) is { } erro)
                 {
                     await Results.BadRequest(erro).ExecuteAsync(ctx);
                     return;
                 }
+        }
         await next(ctx);
     });
 }

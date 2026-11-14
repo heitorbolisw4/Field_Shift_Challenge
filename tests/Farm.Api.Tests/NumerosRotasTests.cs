@@ -197,7 +197,7 @@ public class NumerosRotasTests(ApiFabrica api)
         { "/plano-colheita", "haDia", "haDia=10&haDia=5", "capacidadeHaDia", [7, 3.5] },    // 105 → 73.5 ha/dia (capacidade = haDia × 70%)
     };
 
-    [Theory(Skip = "BUG: parâmetro repetido é juntado com vírgula pelo binding (cad=30&cad=5 vira 305) e escapa da faixa do leitor")]
+    [Theory]
     [MemberData(nameof(Repetidos))]
     public async Task Repetido_nao_vira_outro_numero(string rota, string nome, string crus, string campo, double[] informados)
     {
@@ -210,7 +210,7 @@ public class NumerosRotasTests(ApiFabrica api)
     }
 
     // o mesmo valor repetido não pode virar outro número (30 e 30 → "30,30" → 3030)
-    [Theory(Skip = "BUG: cad=30&cad=30 chega como 3030 na rota (fora do teto 500 do leitor)")]
+    [Theory]
     [InlineData("/recomendacao")]
     [InlineData("/deficit")]
     public async Task Mesmo_valor_repetido_nao_muda(string rota)
@@ -221,7 +221,7 @@ public class NumerosRotasTests(ApiFabrica api)
     }
 
     // lat repetida vira coordenada fora do planeta: o leitor não vê -1555, a rota roda com ela
-    [Theory(Skip = "BUG: lat=-15&lat=55 chega como -1555 (sem conferência de faixa depois do leitor)")]
+    [Theory]
     [InlineData("/clima")]
     [InlineData("/deficit")]
     [InlineData("/recomendacao")]

@@ -1,5 +1,5 @@
 // E2E (ee683a9): cadastro, fazenda, talhão, colhedora, "colhi hoje" e plano, contra a Farm.Api real.
-// test.fixme("BUG: ...") = bug encontrado e não corrigido (convenção do projeto: os testes só relatam).
+// test.fixme("BUG: ...") = bug encontrado e não corrigido; "corrigido: ..." = era bug, virou critério de aceite.
 import { expect, test, type Page } from "@playwright/test";
 
 // Uma aba só para o fluxo todo (a sessão fica na memória, como no celular). Trocar de tela = trocar o hash, sem recarregar,
@@ -185,7 +185,7 @@ test.describe.serial("fluxo do produtor", () => {
     await expect(page.getByText("Fazenda E2E")).toBeVisible();
   });
 
-  test.fixme("BUG: duas abas abertas ao mesmo tempo derrubam a sessão (as duas renovam com o mesmo refresh)", async () => {
+  test("corrigido: duas abas abertas ao mesmo tempo não derrubam a sessão (trava entre abas no refresh)", async () => {
     const context = page.context();
     // O 'um refresh por vez' vale só dentro da aba. Ao abrir duas abas (ou o navegador restaurar as abas),
     // cada uma manda /auth/renovar com o mesmo refresh do localStorage; a API vê o token rotacionado de novo,
@@ -194,11 +194,15 @@ test.describe.serial("fluxo do produtor", () => {
     await a.goto("/");
     await expect(a.getByText("Fazenda E2E")).toBeVisible();
     const b = await context.newPage();
-    // rede lenta (celular): segura cada /auth/renovar até as duas abas terem pedido
+    // rede lenta (celular): segura cada /auth/renovar até as duas abas terem pedido, ou 2 s.
+    // Sem a trava entre abas, os dois pedidos saem juntos com o mesmo refresh (e a API revoga a sessão).
+    // Com a trava, a 2ª aba só pede depois da 1ª terminar: o prazo solta a 1ª e a 2ª usa o refresh novo.
     const presos: (() => Promise<void>)[] = [];
+    const soltarTodos = async () => { for (const solta of presos.splice(0)) await solta(); };
     await context.route("**/auth/renovar", async (r) => {
-      presos.push(() => r.continue());
-      if (presos.length === 2) for (const solta of presos.splice(0)) await solta();
+      presos.push(() => r.continue().catch(() => {})); // o unroute pode já ter soltado
+      if (presos.length === 2) await soltarTodos();
+      else setTimeout(soltarTodos, 2_000);
     });
     await Promise.all([a.reload(), b.goto("/")]);
     await context.unroute("**/auth/renovar");
@@ -206,7 +210,7 @@ test.describe.serial("fluxo do produtor", () => {
     await expect(b.getByText("Fazenda E2E")).toBeVisible();
   });
 
-  test.fixme("BUG: 'Sair' em outra aba deixa esta aba presa em 'Entre para continuar.', e o login seguinte não renova mais", async () => {
+  test("corrigido: 'Sair' em outra aba leva esta aba para o login no próximo pedido, e o login seguinte renova normal", async () => {
     // Aba B sai: apaga o refresh do localStorage. Na aba A, o próximo 401 chama renovar() sem refresh guardado:
     // devolve false sem limpar() (o usuário continua na tela, só com o erro) e, como não houve await,
     // o finally roda antes do `renovando ??=` e a promessa resolvida fica presa. Mesmo entrando de novo pela aba A,

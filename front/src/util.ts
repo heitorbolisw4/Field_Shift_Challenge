@@ -15,14 +15,31 @@ export function hojeIso(agora = new Date()): string {
   return `${agora.getFullYear()}-${p(agora.getMonth() + 1)}-${p(agora.getDate())}`;
 }
 
-// número digitado no celular: aceita "10,5" e "10.5". null = vazio ou inválido
+// milhar pt-BR: 1 a 3 dígitos e depois grupos de exatamente 3 ("1.500", "12.345.678")
+const MILHAR = /^\d{1,3}(\.\d{3})+$/;
+
+// número digitado no celular (pt-BR). null = vazio ou inválido.
+//  - com vírgula: vírgula é o decimal; pontos só valem como milhar certinho ("1.234,5"; "1.2,5" é recusado)
+//  - sem vírgula: "1.500" e "1.000.000" são milhar; outro ponto é decimal ("10.5", "-19.034567" do GPS)
 export function lerNumero(texto: string): number | null {
-  const t = texto.trim().replace(/\s/g, "");
-  if (!t) return null;
-  // "1.234,5" (milhar pt-BR) -> 1234.5; "10,5" -> 10.5; "10.5" fica
-  const normal = t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t;
-  if (!/^-?\d+(\.\d+)?$/.test(normal)) return null;
-  const n = Number(normal);
+  const t = texto.replace(/\s/g, "");
+  const neg = t.startsWith("-");
+  const corpo = neg ? t.slice(1) : t;
+  let normal: string;
+  if (corpo.includes(",")) {
+    const partes = corpo.split(",");
+    if (partes.length !== 2) return null;
+    const [inteiro, fracao] = partes;
+    if (!/^\d+$/.test(fracao) || !(/^\d+$/.test(inteiro) || MILHAR.test(inteiro))) return null;
+    normal = `${inteiro.replace(/\./g, "")}.${fracao}`;
+  } else if (MILHAR.test(corpo)) {
+    normal = corpo.replace(/\./g, "");
+  } else if (/^\d+(\.\d+)?$/.test(corpo)) {
+    normal = corpo;
+  } else {
+    return null;
+  }
+  const n = Number((neg ? "-" : "") + normal);
   return Number.isFinite(n) ? n : null;
 }
 

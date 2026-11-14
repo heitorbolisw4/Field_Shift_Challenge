@@ -21,7 +21,9 @@ export default defineConfig({
     {
       command: "dotnet run --project ../src/Farm.Api --no-launch-profile",
       url: `http://localhost:${API}/solos`,
-      env: { ASPNETCORE_URLS: `http://localhost:${API}`, ASPNETCORE_ENVIRONMENT: "Development", ConnectionStrings__Farm: `Data Source=${banco}` },
+      env: { ASPNETCORE_URLS: `http://localhost:${API}`, ASPNETCORE_ENVIRONMENT: "Development", ConnectionStrings__Farm: `Data Source=${banco}`,
+             // o fluxo inteiro passa de 10 pedidos/minuto em /auth (duas abas, sair, entrar); o limite em si é testado no .NET
+             Auth__TentativasPorMinuto: "100" },
       timeout: 180_000,
       reuseExistingServer: false,
     },
