@@ -7,9 +7,25 @@ public class FarmDb(DbContextOptions<FarmDb> options) : DbContext(options)
     public DbSet<Talhao> Talhoes => Set<Talhao>();
     public DbSet<Colhedora> Colhedoras => Set<Colhedora>();
     public DbSet<ColheitaEvento> Colheitas => Set<ColheitaEvento>();
+    public DbSet<Usuario> Usuarios => Set<Usuario>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder m)
     {
+        m.Entity<Usuario>(e =>
+        {
+            e.Property(u => u.Id).HasMaxLength(32);
+            e.Property(u => u.Email).HasMaxLength(254);
+            e.HasIndex(u => u.Email).IsUnique();
+            e.Property(u => u.Nome).HasMaxLength(200);
+        });
+        m.Entity<RefreshToken>(e =>
+        {
+            e.Property(r => r.Hash).HasMaxLength(64);
+            e.HasIndex(r => r.Hash).IsUnique();
+            e.HasIndex(r => r.UsuarioId);
+            e.HasOne<Usuario>().WithMany().HasForeignKey(r => r.UsuarioId).OnDelete(DeleteBehavior.Cascade);
+        });
         m.Entity<Fazenda>(e =>
         {
             e.HasIndex(f => f.DonoId);                 // toda consulta filtra pelo dono

@@ -8,15 +8,32 @@ Documento completo: `/openapi/v1.json`. Tela para testar: `/docs`.
 - Trocar o caminho: `ConnectionStrings:Farm` no appsettings.
 - Postgres (VPS): trocar `UseSqlite` por `UseNpgsql` e gerar migração nova (`dotnet ef migrations add ... --project src/Farm.Api --output-dir Dados/Migracoes`).
 
-## Usuário (provisório)
+## Login (JWT)
 
-Ainda não tem login. O dono vem do header `X-Usuario` (sem header = `"local"`).
-**Não é seguro.** Antes de expor na internet, entra JWT e o dono passa a vir do claim `sub`.
+1. `POST /auth/registrar {email, senha, nome?}` ou `POST /auth/login {email, senha}` → `accessToken` + `refreshToken`.
+2. Mandar `Authorization: Bearer <accessToken>` nas rotas da fazenda (sem token = 401).
+3. O `accessToken` vale 60 min. Antes de vencer: `POST /auth/renovar {refreshToken}` → par novo. O refresh antigo deixa de valer.
+4. `POST /auth/sair {refreshToken}` encerra a sessão. `GET /auth/eu` mostra a conta.
+
+- Senha: mínimo 8 caracteres, guardada com hash (PBKDF2 do ASP.NET Identity).
+- Refresh token: vale 30 dias, guardado só o hash. Se um refresh já usado aparecer de novo, todas as sessões do usuário caem (sinal de vazamento).
+- `/auth/*`: 10 tentativas por minuto por IP (429 depois disso).
+- Cada usuário só vê as próprias fazendas (outro usuário recebe 404).
+- `/clima`, `/deficit`, `/recomendacao`, `/plano-colheita` e `/solos` continuam abertos.
+
+### Chave do JWT
+
+- Desenvolvimento: `Jwt:Chave` em `appsettings.Development.json` (só para dev).
+- **Produção (VPS): variável de ambiente `Jwt__Chave`** com 32+ caracteres aleatórios. Sem ela a API não sobe.
+- Opcionais: `Jwt__MinutosAcesso`, `Jwt__DiasRefresh`, `Jwt__Emissor`, `Jwt__Publico`.
+- Na VPS atrás de Nginx: ligar ForwardedHeaders, senão o limite por IP enxerga só o IP do proxy.
 
 ## Endpoints
 
 | Método | Rota | O que faz |
 |---|---|---|
+| POST | `/auth/registrar`, `/auth/login`, `/auth/renovar`, `/auth/sair` | conta e tokens |
+| GET | `/auth/eu` | conta logada |
 | GET | `/solos` | classes AD1–AD6 e a CAD (mm) |
 | GET/POST | `/fazendas` | listar / criar |
 | GET/PUT/DELETE | `/fazendas/{id}` | uma fazenda (com talhões e colhedoras) |

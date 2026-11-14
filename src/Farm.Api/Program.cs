@@ -1,12 +1,50 @@
 using System.Globalization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using static Fontes;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHttpClient(); // registra a fábrica de HttpClient
-builder.Services.AddOpenApi();    // documento em /openapi/v1.json; tela de teste em /docs
+
+// documento em /openapi/v1.json; tela de teste em /docs (botão de token Bearer)
+builder.Services.AddOpenApi(o => o.AddDocumentTransformer((doc, _, _) =>
+{
+    doc.Components ??= new OpenApiComponents();
+    doc.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+    doc.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+        { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "JWT", Description = "JWT de /auth/login" };
+    doc.Security ??= [];
+    doc.Security.Add(new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("Bearer", doc)] = [] });
+    return Task.CompletedTask;
+}));
+
+// login: JWT HS256. A chave vem de Jwt:Chave (dev: appsettings.Development.json; produção: variável Jwt__Chave)
+var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOpcoes>() ?? new JwtOpcoes();
+var chave = jwt.ChaveAssinatura(); // falha já na subida se a chave não existir ou for curta
+builder.Services.AddSingleton(jwt);
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
+{
+    o.MapInboundClaims = false; // mantém "sub" como "sub"
+    o.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidIssuer = jwt.Emissor, ValidAudience = jwt.Publico, IssuerSigningKey = chave,
+        ValidAlgorithms = [SecurityAlgorithms.HmacSha256], ClockSkew = TimeSpan.FromMinutes(1),
+    };
+});
+builder.Services.AddAuthorization();
+
+// /auth: 10 tentativas por minuto por IP (atrás de proxy na VPS, precisa de ForwardedHeaders para ver o IP real)
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "?",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+});
 
 // banco da fazenda: SQLite em data/farm.db (ConnectionStrings:Farm no appsettings troca o caminho)
 var raiz = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", ".."));
@@ -20,6 +58,10 @@ using (var escopo = app.Services.CreateScope())
 
 app.MapOpenApi();
 app.MapScalarApiReference("/docs");
+
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
 
 // o front fica em <raiz>/web; a API serve esses arquivos na mesma porta (sem CORS)
 var web = new PhysicalFileProvider(Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "web")));
@@ -105,6 +147,7 @@ app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string
 });
 
 app.MapColheita();
+app.MapAuth();
 app.MapFazenda();
 
 app.Run();

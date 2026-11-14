@@ -125,6 +125,40 @@ namespace Farm.Api.Dados.Migracoes
                     b.ToTable("Fazendas");
                 });
 
+            modelBuilder.Entity("RefreshToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ExpiraEm")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("RevogadoEm")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UsuarioId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Hash")
+                        .IsUnique();
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("RefreshTokens");
+                });
+
             modelBuilder.Entity("Talhao", b =>
                 {
                     b.Property<int>("Id")
@@ -163,6 +197,36 @@ namespace Farm.Api.Dados.Migracoes
                     b.ToTable("Talhoes");
                 });
 
+            modelBuilder.Entity("Usuario", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Nome")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SenhaHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.ToTable("Usuarios");
+                });
+
             modelBuilder.Entity("Colhedora", b =>
                 {
                     b.HasOne("Fazenda", "Fazenda")
@@ -183,6 +247,15 @@ namespace Farm.Api.Dados.Migracoes
                         .IsRequired();
 
                     b.Navigation("Talhao");
+                });
+
+            modelBuilder.Entity("RefreshToken", b =>
+                {
+                    b.HasOne("Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Talhao", b =>

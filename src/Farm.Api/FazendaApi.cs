@@ -47,11 +47,9 @@ static class FazendaApi
                    risco.ToDictionary(kv => kv.Key, kv => Modelo.Nivel(kv.Value)), e.Cad, e.RiscoMax, e.FonteChuva, e.CriadoEm);
     }
 
-    // PROVISÓRIO, sem login: o dono vem do claim "sub" (quando houver JWT), senão do header X-Usuario, senão "local".
-    // O header NÃO é seguro: qualquer um se passa por outro. Trocar por autenticação antes de expor na internet.
+    // dono = claim "sub" do JWT (id do usuário). As rotas da fazenda exigem login, então ele sempre existe.
     public static string Dono(HttpContext ctx) =>
-        ctx.User.FindFirst("sub")?.Value
-        ?? (ctx.Request.Headers["X-Usuario"].FirstOrDefault() is { Length: > 0 and <= 128 } u ? u : "local");
+        ctx.User.FindFirst("sub")?.Value ?? throw new InvalidOperationException("rota sem RequireAuthorization");
 
     // ---- validação ----
     static string? Validar(FazendaIn f) =>
@@ -111,7 +109,7 @@ static class FazendaApi
 
     public static void MapFazenda(this WebApplication app)
     {
-        var fz = app.MapGroup("/fazendas").WithTags("Fazenda");
+        var fz = app.MapGroup("/fazendas").WithTags("Fazenda").RequireAuthorization();
 
         fz.MapGet("/", async (FarmDb db, HttpContext ctx) =>
             (await DoDono(db, ctx).Include(f => f.Talhoes).Include(f => f.Colhedoras).OrderBy(f => f.Id).ToListAsync())
@@ -159,7 +157,7 @@ static class FazendaApi
             return TypedResults.Created($"/talhoes/{t.Id}", Saida(t));
         }).WithTags("Talhão").WithSummary("Cria um talhão: área (ha), classe de solo AD1–AD6 e ponto lat/lon ou polígono GeoJSON");
 
-        var th = app.MapGroup("/talhoes").WithTags("Talhão");
+        var th = app.MapGroup("/talhoes").WithTags("Talhão").RequireAuthorization();
 
         th.MapGet("/{id:int}", async Task<Results<Ok<TalhaoOut>, NotFound>> (int id, FarmDb db, HttpContext ctx) =>
             await TalhoesDoDono(db, ctx).FirstOrDefaultAsync(t => t.Id == id) is { } t ? TypedResults.Ok(Saida(t)) : TypedResults.NotFound());
@@ -186,7 +184,7 @@ static class FazendaApi
             return TypedResults.Created($"/colhedoras/{c.Id}", Saida(c));
         }).WithTags("Colhedora").WithSummary("Cadastra uma colhedora com a capacidade em ha por dia de trabalho");
 
-        var ch = app.MapGroup("/colhedoras").WithTags("Colhedora");
+        var ch = app.MapGroup("/colhedoras").WithTags("Colhedora").RequireAuthorization();
         ch.MapPut("/{id:int}", async Task<Results<Ok<ColhedoraOut>, NotFound, BadRequest<string>>> (int id, ColhedoraIn i, FarmDb db, HttpContext ctx) =>
         {
             if (string.IsNullOrWhiteSpace(i.Nome) || i.HaDia <= 0) return TypedResults.BadRequest("nome é obrigatório e haDia deve ser maior que zero");
@@ -244,7 +242,7 @@ static class FazendaApi
             var d = Dono(ctx);
             return await db.Colheitas.Where(e => e.Id == id && e.Talhao.Fazenda.DonoId == d).ExecuteDeleteAsync() > 0
                 ? TypedResults.NoContent() : TypedResults.NotFound();
-        }).WithTags("Colheita");
+        }).WithTags("Colheita").RequireAuthorization();
 
         // ---- plano da fazenda inteira: talhões colhidos um depois do outro ----
         fz.MapGet("/{id:int}/plano-colheita", async Task<IResult> (int id, DateOnly inicio, FarmDb db, HttpContext ctx, IHttpClientFactory http,
