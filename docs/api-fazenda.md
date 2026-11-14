@@ -12,7 +12,7 @@ Documento completo: `/openapi/v1.json`. Tela para testar: `/docs`.
 
 1. `POST /auth/registrar {email, senha, nome?}` ou `POST /auth/login {email, senha}` → `accessToken` + `refreshToken`.
 2. Mandar `Authorization: Bearer <accessToken>` nas rotas da fazenda (sem token = 401).
-3. O `accessToken` vale 60 min. Antes de vencer: `POST /auth/renovar {refreshToken}` → par novo. O refresh antigo deixa de valer.
+3. O `accessToken` vale 20 min. Antes de vencer: `POST /auth/renovar {refreshToken}` → par novo. O refresh antigo deixa de valer.
 4. `POST /auth/sair {refreshToken}` encerra a sessão. `GET /auth/eu` mostra a conta.
 
 - Senha: mínimo 8 caracteres, guardada com hash (PBKDF2 do ASP.NET Identity).

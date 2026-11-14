@@ -13,7 +13,7 @@ public class JwtOpcoes
     public string Chave { get; set; } = "";            // segredo HS256, 32+ bytes. Produção: variável de ambiente Jwt__Chave
     public string Emissor { get; set; } = "farm-api";
     public string Publico { get; set; } = "farm-app";
-    public int MinutosAcesso { get; set; } = 60;        // vida do JWT
+    public int MinutosAcesso { get; set; } = 20;        // vida do JWT
     public int DiasRefresh { get; set; } = 30;          // vida do refresh token
 
     public SymmetricSecurityKey ChaveAssinatura()
