@@ -57,17 +57,16 @@ public class FinitosTests(ApiFabrica api)
     public async Task Outras_rotas_query_ruim_da_400(string url) =>
         await Da400(await api.Anonimo().GetAsync($"{url}&{Ponto}"), url);
 
-    // O binding da query lê com InvariantCulture + AllowThousands: "60,5" vira 605 e "0,2" vira 2, sem erro.
-    // Fontes.ComCoordenadas já recusa vírgula em lat/lon pelo mesmo motivo; os outros doubles passam.
-    [Theory(Skip = "BUG: vírgula decimal na query vira separador de milhar (haDia=60,5 -> 605; riscoMax=0,2 -> 2; cad=30,5 -> 305), 200 com dado errado")]
+    // O binding da query lê com AllowThousands ("60,5" viraria 605); o middleware Numeros recusa vírgula em todo número
+    [Theory]
     [InlineData("/plano-colheita?inicio=2026-01-05&area=100&haDia=60,5")]
     [InlineData("/plano-colheita?inicio=2026-01-05&fim=2026-02-01&riscoMax=0,2")]
     [InlineData("/recomendacao?inicio=01-01&fim=01-10&cad=30,5")]
     public async Task Virgula_decimal_na_query_da_400(string url) =>
         await Da400(await api.Anonimo().GetAsync($"{url}&{Ponto}"), url);
 
-    // cad, riscoMax e fatorChuva da query não têm faixa: só o filtro de finitos. No corpo, riscoMax é 0..1.
-    [Theory(Skip = "BUG: cad/riscoMax/fatorChuva da query sem faixa: riscoMax=2 ou -1, cad<=0 e fatorChuva=-1 (chuva negativa) dão 200")]
+    // faixas da query (Numeros.Faixas): riscoMax 0..1, cad > 0, fatorChuva 0..5
+    [Theory]
     [InlineData("/plano-colheita?inicio=2026-01-05&fim=2026-02-01&riscoMax=2")]
     [InlineData("/plano-colheita?inicio=2026-01-05&fim=2026-02-01&riscoMax=-1")]
     [InlineData("/plano-colheita?inicio=2026-01-05&fim=2026-02-01&cad=-1")]

@@ -4,14 +4,10 @@ using System.Globalization;
 // Usado por /recomendacao, /plano-colheita e pelos endpoints da fazenda.
 static class Fontes
 {
-    // lat/lon da query: ponto decimal e dentro do intervalo. Com o PC em pt-BR, "-15,55" seria lido como -1555.
-    // Também barra NaN/Infinity em qualquer parâmetro double da rota (cad, riscoMax, area, haDia...).
+    // vírgula, faixa e finitos da query ficam no middleware Numeros (todas as rotas).
+    // Aqui só a rede de segurança: algum double da rota que ainda não está na tabela de Numeros.Faixas.
     public static RouteHandlerBuilder ComCoordenadas(this RouteHandlerBuilder b) => b.AddEndpointFilter(async (ctx, next) =>
     {
-        var q = ctx.HttpContext.Request.Query;
-        foreach (var (nome, max) in new[] { ("lat", 90.0), ("lon", 180.0) })
-            if (!double.TryParse(q[nome].ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) || !(Math.Abs(v) <= max))
-                return Results.BadRequest($"{nome} inválido: use ponto como separador decimal e valor entre -{max} e {max}");
         // o binding aceita "NaN" e "Infinity" em double; NaN passa em qualquer validação com < e > (comparação dá falso)
         if (ctx.Arguments.Any(a => a is double d && !double.IsFinite(d)))
             return Results.BadRequest("números da query precisam ser finitos (sem NaN ou Infinity)");

@@ -72,6 +72,7 @@ app.MapScalarApiReference("/docs");
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+app.UseNumerosDaQuery(); // números da query: ponto decimal, finitos e na faixa (Numeros.cs), em todas as rotas
 
 // o front fica em <raiz>/web; a API serve esses arquivos na mesma porta (sem CORS)
 var web = new PhysicalFileProvider(Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "web")));
