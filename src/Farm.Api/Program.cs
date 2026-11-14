@@ -1,9 +1,25 @@
 using System.Globalization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Scalar.AspNetCore;
+using static Fontes;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHttpClient(); // registra a fábrica de HttpClient
+builder.Services.AddOpenApi();    // documento em /openapi/v1.json; tela de teste em /docs
+
+// banco da fazenda: SQLite em data/farm.db (ConnectionStrings:Farm no appsettings troca o caminho)
+var raiz = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", ".."));
+builder.Services.AddDbContext<FarmDb>(o => o.UseSqlite(
+    builder.Configuration.GetConnectionString("Farm") ?? $"Data Source={Path.Combine(raiz, "data", "farm.db")}"));
+
 var app = builder.Build();
+
+using (var escopo = app.Services.CreateScope())
+    escopo.ServiceProvider.GetRequiredService<FarmDb>().Database.Migrate(); // cria/atualiza as tabelas
+
+app.MapOpenApi();
+app.MapScalarApiReference("/docs");
 
 // o front fica em <raiz>/web; a API serve esses arquivos na mesma porta (sem CORS)
 var web = new PhysicalFileProvider(Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "web")));
@@ -12,32 +28,6 @@ app.UseStaticFiles(new StaticFileOptions { FileProvider = web });
 
 Imerg.Pasta = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "imerg"));
 Smap.Pasta = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "smap"));
-
-// água no balde no dia do plantio: "cheio" (CAD toda) ou "smap" (umidade observada; dia sem dado -> cheio)
-// "auto": smap se a cidade tem CSV do SMAP, senão cheio. Devolve o modo usado de fato (null = valor inválido).
-string? Agua(string aguaInicial, double lat, double lon) => aguaInicial switch
-{
-    "auto" => Smap.Fc(lat, lon) is null ? "cheio" : "smap",
-    "cheio" or "smap" => aguaInicial,
-    _ => null
-};
-double AguaIni(string aguaInicial, double lat, double lon, DateOnly plantio) =>
-    aguaInicial == "smap" ? Smap.Fracao(lat, lon, plantio) ?? 1 : 1;
-const string AguaErro = "aguaInicial deve ser auto, cheio ou smap";
-
-// clima diário do POWER; com fonteChuva=imerg, a chuva vem do CSV do IMERG. null = não tem IMERG para esse ponto.
-// "auto": IMERG se tiver CSV do pixel, senão POWER. Devolve também a fonte usada de fato.
-async Task<(List<Dia>? Dias, string Fonte)> Dados(IHttpClientFactory http, double lat, double lon, string fonte)
-{
-    var power = await Power.BaixarAsync(http.CreateClient(), lat, lon);
-    if (fonte == "power") return (power, "power");
-    if (fonte is not ("auto" or "imerg")) return (null, fonte);
-    var imerg = Imerg.TrocarChuva(power, lat, lon);
-    return fonte == "auto" && imerg is null ? (power, "power") : (imerg, "imerg");
-}
-IResult SemImerg(double lat, double lon, string fonte) => fonte != "imerg"
-    ? Results.BadRequest("fonteChuva deve ser auto, imerg ou power")
-    : Results.BadRequest($"sem dados do IMERG para este ponto: falta {Path.GetFileName(Imerg.Arquivo(lat, lon))} em data/imerg");
 
 // passo 4: média por mês, para checar se os dados fazem sentido
 app.MapGet("/clima", async (double lat, double lon, IHttpClientFactory http, string fonteChuva = "auto") =>
@@ -97,56 +87,24 @@ app.MapGet("/recomendacao", async (double lat, double lon, string inicio, string
                                    string criterio = "isna", double riscoMax = 0.2, string fonteChuva = "auto",
                                    string aguaInicial = "auto") =>
 {
-    if (Agua(aguaInicial, lat, lon) is not { } agua) return Results.BadRequest(AguaErro);
-    aguaInicial = agua;
     var inv = CultureInfo.InvariantCulture;
     var di = DateOnly.ParseExact($"2001-{inicio}", "yyyy-MM-dd", inv); // 2001: ano qualquer, não bissexto
     var df = DateOnly.ParseExact($"2001-{fim}", "yyyy-MM-dd", inv);
-    if (df < di) df = df.AddYears(1);  // janela cruza o ano (ex.: dez -> mar): o fim vai para 2002
 
-    (var lista, fonteChuva) = await Dados(http, lat, lon, fonteChuva);
-    if (lista is null) return SemImerg(lat, lon, fonteChuva);
-    var dias = lista.ToDictionary(d => d.Data);
-    var anos = dias.Keys.Select(d => d.Year).Distinct().Order().ToList();
+    var (cal, erro) = await CalendarioAsync(http, lat, lon, di, df, cad, riscoMax, fonteChuva, aguaInicial, criterio, fatorChuva, et0);
+    if (cal is null) return erro!;
 
-    var decendios = new List<object>();
-    for (var d = di; d <= df; )
-    {
-        // decêndio: dias 1–10, 11–20 ou 21–fim do mês
-        var ini = new DateOnly(d.Year, d.Month, d.Day <= 10 ? 1 : d.Day <= 20 ? 11 : 21);
-        var fimDec = d.Day <= 20 ? ini.AddDays(9) : new DateOnly(d.Year, d.Month, DateTime.DaysInMonth(d.Year, d.Month));
+    var decendios = cal.Decendios.Select(r => new {
+        decendio = r.Decendio.ToString(),
+        risco = r.Risco.ToDictionary(kv => kv.Key, kv => Math.Round(kv.Value, 2)),
+        nivel = r.Risco.ToDictionary(kv => kv.Key, kv => Modelo.Nivel(kv.Value)),
+        recomendacao = r.Recomendacao
+    });
 
-        // risco = fração de (dia de plantio × ano) em que a cultura falha no critério
-        var risco = new Dictionary<string, double>();
-        foreach (var c in Culturas.Graos)
-        {
-            int total = 0, falhas = 0;
-            for (var p = ini; p <= fimDec; p = p.AddDays(1))
-                foreach (var a in anos)
-                {
-                    var plantio = new DateOnly(a, p.Month, p.Day); // cada decêndio usa os mesmos 10 anos, com ou sem virada de ano
-                    var s = Modelo.Simular(c, dias, plantio, lat, cad, fatorChuva, et0 == "pm", AguaIni(aguaInicial, lat, lon, plantio));
-                    if (s is null) continue;                 // ciclo passou do fim dos dados
-                    total++;
-                    if (!Modelo.Passa(c, s, criterio)) falhas++;
-                }
-            risco[c.Nome] = total == 0 ? 1 : (double)falhas / total;
-        }
-
-        // a cultura mais exigente cujo risco cabe no limite; senão, braquiária
-        var escolha = Culturas.Graos.FirstOrDefault(c => risco[c.Nome] <= riscoMax)?.Nome ?? "braquiária";
-
-        decendios.Add(new {
-            decendio = $"{ini.ToString("dd/MM", inv)} a {fimDec.ToString("dd/MM", inv)}",
-            risco = risco.ToDictionary(kv => kv.Key, kv => Math.Round(kv.Value, 2)),
-            nivel = risco.ToDictionary(kv => kv.Key, kv => Modelo.Nivel(kv.Value)),
-            recomendacao = escolha
-        });
-
-        d = fimDec.AddDays(1);
-    }
-
-    return Results.Ok(new { cad, et0, criterio, riscoMax, fonteChuva, aguaInicial, decendios });
+    return Results.Ok(new { cad, et0, criterio, riscoMax, fonteChuva = cal.FonteChuva, aguaInicial = cal.AguaInicial, decendios });
 });
+
+app.MapColheita();
+app.MapFazenda();
 
 app.Run();

@@ -488,3 +488,8 @@ obj/
 *.bak
 *.user
 .backup/
+
+# banco local da Minha fazenda
+data/*.db
+data/*.db-shm
+data/*.db-wal
