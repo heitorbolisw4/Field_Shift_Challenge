@@ -8,25 +8,137 @@
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f6f7f9; color: #1a1a1a; }
-    h1 { margin: 0 0 4px; font-size: 22px; }
-    .sub { color: #555; margin: 0 0 16px; font-size: 14px; }
-    form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; background: #fff; padding: 12px; border-radius: 8px; }
-    label { display: flex; flex-direction: column; font-size: 13px; gap: 4px; }
-    input, select, button { font-size: 15px; padding: 6px 8px; }
-    button { background: #0b57d0; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
-    button:disabled { opacity: .5; }
-    .resumo { margin: 16px 0; padding: 12px; background: #fff; border-left: 4px solid #0b57d0; border-radius: 4px; }
+    :root {
+      --bg: #f4f1ea; --card: #ffffff; --texto: #1d2a21; --suave: #5f6b62; --borda: #e2ddd2;
+      --verde: #2f6b3a; --verde-escuro: #1f3d2b; --ambar: #d99a1e;
+      --milho: #d99a1e; --sorgo: #a6452b; --braq: #3f8a4a;
+      --r20: #2e8b57; --r30: #f2c94c; --r40: #d64545; --rna: #ebe7de;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--texto); }
+
+    /* topo */
+    header { background: var(--verde-escuro); color: #fff; }
+    .topo { max-width: 1120px; margin: 0 auto; padding: 20px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .topo h1 { margin: 0; font-size: 24px; letter-spacing: -0.02em; }
+    .topo p { margin: 2px 0 0; font-size: 14px; color: #c9d8cc; }
+    .selo { margin-left: auto; font-size: 12px; border: 1px solid #4f7a5a; border-radius: 999px; padding: 6px 12px; color: #dfeee2; }
+
+    main { max-width: 1120px; margin: 0 auto; padding: 20px 16px 48px; }
+    .card { background: var(--card); border: 1px solid var(--borda); border-radius: 14px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .card + .card, .cards + .card { margin-top: 16px; }
+    .card h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--suave); font-weight: 600; }
+
+    /* formulário */
+    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    fieldset { border: 0; margin: 0; padding: 0; }
+    .titulo { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--suave); font-weight: 600; margin-bottom: 10px; }
+    .campos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; }
+    input, select { font: inherit; font-size: 15px; padding: 9px 10px; border: 1px solid var(--borda); border-radius: 8px; background: #fbfaf7; width: 100%; }
+    input:focus, select:focus { outline: 2px solid var(--verde); outline-offset: 1px; background: #fff; }
+    input:disabled { color: var(--suave); background: #f1eee7; }
+    .toggle { flex-direction: row; align-items: center; gap: 8px; grid-column: 1 / -1; font-weight: 400; }
+    .toggle input { width: auto; }
+    .nota { grid-column: 1 / -1; font-size: 13px; color: var(--suave); background: #f6f3ec; border-radius: 8px; padding: 8px 10px; }
+    .nota b { color: var(--texto); }
+    .acao { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; }
+    button { font: inherit; cursor: pointer; }
+    .principal { font-weight: 600; font-size: 16px; padding: 12px 16px; background: var(--verde); color: #fff; border: 0; border-radius: 10px; transition: background .15s, transform .05s; }
+    .principal:hover { background: #275a31; }
+    .principal:active { transform: scale(.98); }
+    .principal:disabled { opacity: .6; cursor: wait; }
+    .dica { font-size: 12px; color: var(--suave); text-align: center; }
+
+    .campo { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; }
+
+    /* segmentado: botões que viram "pílulas" */
+    .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+    .seg button { flex: 1 1 auto; min-width: 72px; white-space: nowrap; display: flex; flex-direction: column; align-items: center; gap: 2px;
+                  padding: 9px 10px; border: 1px solid var(--borda); border-radius: 10px; background: #fbfaf7; color: var(--texto);
+                  font-size: 14px; font-weight: 500; transition: all .15s; }
+    .seg button:hover { border-color: var(--verde); background: #f1f6f1; }
+    .seg button.on { background: var(--verde); border-color: var(--verde); color: #fff; box-shadow: 0 2px 6px rgba(47,107,58,.3); }
+    .seg small { font-size: 11px; opacity: .75; font-weight: 400; }
+    .agua { display: block; width: 100%; height: 4px; border-radius: 2px; background: rgba(0,0,0,.08); margin-top: 4px; overflow: hidden; }
+    .agua b { display: block; height: 100%; background: #4a90c2; }
+    .seg button.on .agua { background: rgba(255,255,255,.25); }
+    .seg button.on .agua b { background: #bfe0f7; }
+
+    /* stepper − 1 + */
+    .stepper { display: flex; align-items: center; border: 1px solid var(--borda); border-radius: 10px; overflow: hidden; background: #fbfaf7; }
+    .stepper button { width: 44px; height: 40px; border: 0; background: none; font-size: 20px; color: var(--verde); }
+    .stepper button:hover:not(:disabled) { background: #f1f6f1; }
+    .stepper button:disabled { color: #c9c4b8; cursor: default; }
+    .stepper span { flex: 1; text-align: center; font-size: 16px; font-weight: 600; }
+
+    /* slider */
+    .slider { display: flex; align-items: center; gap: 10px; height: 40px; }
+    .slider input { padding: 0; border: 0; background: none; accent-color: var(--verde); flex: 1; }
+    .slider output { min-width: 44px; text-align: right; font-weight: 600; font-size: 15px; }
+
+    .erro { margin-top: 16px; color: #8c1d1d; background: #fbeaea; border: 1px solid #f0c4c4; border-radius: 10px; padding: 12px; }
+
+    /* resultado: um cartão por cultura */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 20px; }
+    .cultura { background: var(--card); border: 1px solid var(--borda); border-top: 5px solid var(--cor); border-radius: 14px; padding: 16px; }
+    .cultura .nome { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: var(--cor); }
+    .cultura .ha { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 2px; }
+    .cultura .ha small { font-size: 15px; font-weight: 500; color: var(--suave); }
+    .cultura .datas { font-size: 14px; color: var(--suave); }
+
+    /* tabela de risco */
     .tabela { overflow-x: auto; }
-    table { border-collapse: collapse; background: #fff; }
-    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: center; font-size: 13px; white-space: nowrap; }
-    th:first-child, td:first-child { text-align: left; font-weight: 600; }
-    .legenda { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; }
-    .legenda span { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 4px; }
-    .erro { color: #b00020; margin-top: 12px; }
-    .colheita { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; width: 100%; padding-top: 8px; border-top: 1px dashed #ddd; }
-    .nota { font-size: 13px; color: #555; }
+    table { border-collapse: separate; border-spacing: 3px; font-size: 13px; }
+    th { font-weight: 600; color: var(--suave); padding: 6px 8px; white-space: nowrap; }
+    td { padding: 9px 10px; text-align: center; border-radius: 6px; white-space: nowrap; font-weight: 600; }
+    td:first-child, th:first-child { text-align: left; background: none; color: var(--texto); padding-right: 14px; }
+    .rec td { font-weight: 500; color: var(--suave); background: none; }
+    .legenda { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; color: var(--suave); }
+    .legenda i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+    .rodape { margin-top: 20px; font-size: 12px; color: var(--suave); }
+
+
+    /* comparar estratégias */
+    .estrategias { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 8px; }
+    .estrategia { border: 1px solid var(--borda); border-left: 5px solid var(--cor); border-radius: 12px; padding: 14px; background: #fbfaf7; font-size: 13px; }
+    .estrategia h3 { margin: 0 0 2px; font-size: 15px; }
+    .estrategia .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--suave); }
+    .estrategia .evid { margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: #fff; border: 1px dashed var(--borda); font-weight: 500; }
+    .estrategia b.k { display: block; margin-top: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--suave); }
+    .estrategia ul { margin: 2px 0 0; padding-left: 18px; }
+    .aviso { margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: #fff8e6; border: 1px solid #f0dca8; font-size: 13px; }
+
+    td small.calc { display: block; font-size: 11px; font-weight: 500; opacity: .85; margin-top: 1px; }
+    .estrategia summary { cursor: pointer; color: var(--verde); font-weight: 600; padding: 4px 0; }
+    td:first-child { position: sticky; left: 0; background: var(--card); z-index: 1; }  /* nome da cultura fica fixo ao rolar */
+
+    /* celular: o produtor usa na roça, com o dedo */
+    @media (max-width: 700px) {
+      .topo { padding: 14px 16px; }
+      .topo h1 { font-size: 21px; }
+      .selo { margin-left: 0; font-size: 11px; }
+      main { padding: 12px 12px 40px; }
+      .card { padding: 14px; }
+      form { grid-template-columns: 1fr; }
+      input, select { font-size: 16px; min-height: 46px; }        /* 16px evita o zoom automático do iPhone */
+      .seg button { min-height: 48px; font-size: 15px; }
+      .stepper button { width: 52px; height: 46px; }
+      .slider { height: 46px; }
+      .slider input { height: 32px; }
+      .toggle { min-height: 40px; }
+      .toggle input { width: 22px; height: 22px; min-height: 0; }
+      .principal { min-height: 52px; font-size: 17px; }
+      .cards { grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+      .cultura { padding: 12px; }
+      .cultura .ha { font-size: 28px; }
+      .tabela { margin: 0 -14px; padding: 0 14px; }
+      .estrategias { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 380px) { .campos { grid-template-columns: 1fr; } .cards { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -34,11 +146,12 @@
 
   <script>
     const html = htm.bind(React.createElement);
-    const { useState } = React;
+    const { useState, useEffect, useRef } = React;
 
     // mesmas cores do Painel do ZARC
-    const COR = { "20%": "#2e8b2e", "30%": "#f2d600", "40%": "#e53935", "inapto": "#e0e0e0" };
-    const TEXTO = { "20%": "#fff", "30%": "#000", "40%": "#fff", "inapto": "#777" };
+    const COR = { "20%": "var(--r20)", "30%": "var(--r30)", "40%": "var(--r40)", "inapto": "var(--rna)" };
+    const TEXTO = { "20%": "#fff", "30%": "#3a2f00", "40%": "#fff", "inapto": "#9a948a" };
+    const COR_CULTURA = { "milho": "var(--milho)", "sorgo": "var(--sorgo)", "braquiária": "var(--braq)" };
 
     // Triângulo Mineiro: sede do município, coordenada aproximada.
     // O pixel do POWER tem ~50 km, então erro de alguns km aqui não muda nada.
@@ -93,6 +206,97 @@
       return trechos;
     }
 
+
+    // Para cada grão: em quantos dias da colheita ele cabe no risco aceito, e o risco médio nesses dias.
+    function avaliarGraos(decendios, c, riscoMax) {
+      const porInicio = {};
+      for (const d of decendios) {
+        const [dd, mm] = d.decendio.slice(0, 5).split("/");
+        porInicio[mm + "-" + dd] = d;
+      }
+      const r = { dias: 0 };
+      for (let iso = c.inicio; iso <= c.fim; iso = somarDias(iso, 1)) {
+        const dia = +iso.slice(8, 10);
+        const d = porInicio[iso.slice(5, 7) + "-" + (dia <= 10 ? "01" : dia <= 20 ? "11" : "21")];
+        if (!d) continue;
+        r.dias++;
+        for (const g of Object.keys(d.risco)) {
+          r[g] ??= { cabe: 0, soma: 0 };
+          r[g].soma += d.risco[g];
+          if (d.risco[g] <= riscoMax) r[g].cabe++;
+        }
+      }
+      for (const g of Object.keys(r)) if (g !== "dias") {
+        r[g].pct = Math.round(100 * r[g].cabe / r.dias);
+        r[g].media = Math.round(100 * r[g].soma / r.dias);
+      }
+      return r;
+    }
+
+    // texto agronômico curto; a evidência numérica vem do modelo (avaliarGraos)
+    const ESTRATEGIAS = [
+      { id: "pousio", nome: "Soja → pousio", tag: "o que se faz hoje", cor: "var(--suave)",
+        porque: "É a referência: o que acontece se nada for plantado depois da soja.",
+        beneficios: ["Zero custo e zero risco de quebra na safrinha"],
+        lacunas: ["Quanto solo se perde por erosão na seca (sem medida local)"],
+        revisar: ["Solo descoberto de abril a outubro: erosão e pouca palha para o plantio direto", "Plantas daninhas livres na entressafra"] },
+      { id: "milho", nome: "Soja → milho", tag: "mais renda, mais risco", cor: "var(--milho)", grao: "milho",
+        porque: "Maior valor de mercado entre as opções. É a safrinha padrão da região.",
+        beneficios: ["Renda na segunda safra", "Palha média para o plantio direto"],
+        lacunas: ["Preço e custo de produção da safra", "Chuva real do talhão (POWER subestima)"],
+        revisar: ["Mais sensível à seca no florescimento (Ky 1,25)", "Cigarrinha e enfezamento no milho tardio"] },
+      { id: "sorgo", nome: "Soja → sorgo", tag: "mais tolerante à seca", cor: "var(--sorgo)", grao: "sorgo",
+        porque: "Aguenta melhor a falta de água (Ky 0,9). Serve para plantio tardio.",
+        beneficios: ["Janela de plantio mais longa", "Menor custo que o milho"],
+        lacunas: ["Liquidez e preço do sorgo na região", "Kc e ciclo do híbrido usado"],
+        revisar: ["Renda menor que o milho", "Pássaros e pulgão na panícula"] },
+      { id: "consorcio", nome: "Soja → milho + braquiária", tag: "renda e conservação", cor: "var(--braq)", grao: "milho",
+        porque: "Milho colhe a renda; a braquiária fica cobrindo o solo na seca.",
+        beneficios: ["Palha para o plantio direto da soja", "Protege contra erosão", "Quebra ciclo de pragas e nematoides", "Mais matéria orgânica"],
+        lacunas: ["Quanto a braquiária compete com o milho (modelo não simula)", "Dose de herbicida para manejar a braquiária"],
+        revisar: ["Risco de água igual ou maior que o milho solteiro", "Exige manejo na semeadura (profundidade, época)"] },
+    ];
+
+    function evidencia(e, av, riscoMax, c) {
+      const lim = Math.round(riscoMax * 100);
+      if (!e.grao) return "Sem risco de quebra porque não há lavoura. Também não há renda nem palha.";
+      const g = av[e.grao];
+      if (!g) return "Sem dados do modelo.";
+      // mesma conta dos cartões de cima: dias × capacidade, sem passar da área
+      const ha = c.comHa ? ` (~${Math.round(Math.min(g.cabe * c.capacidade, c.area)).toLocaleString("pt-BR")} ha)` : "";
+      return `Cabe no risco de ${lim}% em ${g.pct}% dos dias de colheita${ha}. Risco médio na janela: ${g.media}%.`;
+    }
+
+    // ---- controles ----
+    // botões lado a lado; um fica marcado
+    function Segmentado({ opcoes, valor, onChange }) {
+      return html`<div className="seg">
+        ${opcoes.map(o => html`
+          <button type="button" key=${o.valor} className=${o.valor === valor ? "on" : ""} onClick=${() => onChange(o.valor)}>
+            <span>${o.rotulo}</span>${o.sub && html`<small>${o.sub}</small>`}
+            ${o.agua != null && html`<i className="agua"><b style=${{ width: o.agua + "%" }}></b></i>`}
+          </button>`)}
+      </div>`;
+    }
+
+    // − valor +
+    function Stepper({ valor, onChange, min = 1, max = 20 }) {
+      const v = +valor;
+      return html`<div className="stepper">
+        <button type="button" onClick=${() => onChange(String(Math.max(min, v - 1)))} disabled=${v <= min}>−</button>
+        <span>${v}</span>
+        <button type="button" onClick=${() => onChange(String(Math.min(max, v + 1)))} disabled=${v >= max}>+</button>
+      </div>`;
+    }
+
+    // slider com o valor ao lado
+    function Slider({ valor, onChange, min, max, step = 1, sufixo }) {
+      return html`<div className="slider">
+        <input type="range" min=${min} max=${max} step=${step} value=${valor} onInput=${e => onChange(e.target.value)} onChange=${e => onChange(e.target.value)} />
+        <output>${valor}${sufixo}</output>
+      </div>`;
+    }
+
     function App() {
       const [cidade, setCidade] = useState("Indianópolis");
       const [lat, setLat] = useState("-19.03");
@@ -121,114 +325,184 @@
         if (c) { setLat(String(c[1])); setLon(String(c[2])); }
       }
 
+      const ultimaChamada = useRef(0);
+      const resultadoRef = useRef(null);
+      const rolar = useRef(false);   // só rola quando a pessoa tocou no botão, não no recálculo automático
+      const celular = window.innerWidth < 700;
+
+      useEffect(() => {
+        if (rolar.current && dados && celular) resultadoRef.current?.scrollIntoView({ behavior: "smooth" });
+        rolar.current = false;
+      }, [dados]);
+
       async function calcular(e) {
-        e.preventDefault();
-        setCarregando(true); setErro(""); setDados(null);
+        e?.preventDefault();
+        if (e) rolar.current = true;
+        const id = ++ultimaChamada.current;     // se outra chamada começar depois, esta é descartada
+        setCarregando(true); setErro("");
         try {
           const q = new URLSearchParams({ lat, lon, inicio: mesDia(inicio), fim: mesDia(fim), cad, riscoMax });
           const r = await fetch("/recomendacao?" + q);
           if (!r.ok) throw new Error(await r.text());
-          setDados(await r.json());
+          const json = await r.json();
+          if (id !== ultimaChamada.current) return;
+          setDados(json);
           setConsulta({ inicio, fim, area: +area, comHa: calcularFim,
                         capacidade: (+haDia) * (+colhedoras) * (+uteis) / 100 });
         } catch (err) {
           setErro("Falhou: " + err.message);
         } finally {
-          setCarregando(false);
+          if (id === ultimaChamada.current) setCarregando(false);
         }
       }
+
+      // ?auto na URL calcula ao abrir (útil para print e para a demo)
+      useEffect(() => { if (new URLSearchParams(location.search).has("auto")) calcular(); }, []);
+
+      // depois do primeiro cálculo, qualquer mudança recalcula sozinha (espera 400 ms o usuário parar de mexer)
+      useEffect(() => {
+        if (!dados) return;
+        const t = setTimeout(() => calcular(), 400);
+        return () => clearTimeout(t);
+      }, [lat, lon, inicio, fim, cad, riscoMax, area, colhedoras, haDia, uteis]);
 
       const culturas = dados ? Object.keys(dados.decendios[0].risco) : [];
 
       return html`
-        <h1>Safrinha Certa</h1>
-        <p className="sub">Depois da soja, o que plantar? Risco climático com 10 anos de dados da NASA (POWER), critério do ZARC.</p>
-
-        <form onSubmit=${calcular}>
-          <label>Município
-            <select value=${cidade} onChange=${e => escolherCidade(e.target.value)}>
-              ${CIDADES.map(c => html`<option key=${c[0]} value=${c[0]}>${c[0]}</option>`)}
-              <option value="outra">Outra (lat/lon)</option>
-            </select>
-          </label>
-          <label>Latitude <input value=${lat} onChange=${e => { setCidade("outra"); setLat(e.target.value); }} size="7" /></label>
-          <label>Longitude <input value=${lon} onChange=${e => { setCidade("outra"); setLon(e.target.value); }} size="7" /></label>
-          <label>Colheita da soja: início <input type="date" value=${inicio} onChange=${e => setInicio(e.target.value)} /></label>
-          <label>fim
-            <input type="date" value=${fim} disabled=${calcularFim} onChange=${e => setFimManual(e.target.value)} />
-          </label>
-          <label style=${{ flexDirection: "row", alignItems: "center", gap: "6px" }}>
-            <input type="checkbox" checked=${calcularFim} onChange=${e => setCalcularFim(e.target.checked)} />
-            calcular fim pela colheita
-          </label>
-          ${calcularFim && html`
-            <div className="colheita">
-              <label>Área (ha) <input type="number" min="1" value=${area} onChange=${e => setArea(e.target.value)} style=${{ width: "80px" }} /></label>
-              <label>Colhedoras <input type="number" min="1" value=${colhedoras} onChange=${e => setColhedoras(e.target.value)} style=${{ width: "60px" }} /></label>
-              <label>ha/dia por colhedora* <input type="number" min="1" value=${haDia} onChange=${e => setHaDia(e.target.value)} style=${{ width: "70px" }} /></label>
-              <label>Dias úteis (%)* <input type="number" min="1" max="100" value=${uteis} onChange=${e => setUteis(e.target.value)} style=${{ width: "60px" }} /></label>
-              <span className="nota">
-                Colheita leva <b>${dias} dias</b>.
-                ${" "}* estimativa: ajuste para a sua máquina e região.
-              </span>
-            </div>`}
-          <label>Solo
-            <select value=${cad} onChange=${e => setCad(e.target.value)}>
-              <option value="30">Arenoso (30 mm)</option>
-              <option value="47">Médio (47 mm)</option>
-              <option value="72">Argiloso (72 mm)</option>
-            </select>
-          </label>
-          <label>Risco aceito
-            <select value=${riscoMax} onChange=${e => setRiscoMax(e.target.value)}>
-              <option value="0.2">20%</option>
-              <option value="0.3">30%</option>
-              <option value="0.4">40%</option>
-            </select>
-          </label>
-          <button disabled=${carregando}>${carregando ? "Baixando 10 anos da NASA..." : "Calcular"}</button>
-        </form>
-
-        ${erro && html`<div className="erro">${erro}</div>`}
-
-        ${dados && html`
-          <div className="resumo">
-            <strong>Recomendação:</strong>${" "}
-            ${trechosDaColheita(dados.decendios, consulta).map((t, i) => html`
-              <span key=${i}>${i > 0 ? " · " : ""}<b>${t.cultura}</b> de ${t.de} a ${t.ate}${consulta.comHa ? ` (~${t.ha} ha)` : ""}</span>`)}
+        <header>
+          <div className="topo">
+            <div>
+              <h1>Safrinha Certa</h1>
+              <p>Depois da soja, o que plantar e quanto de cada.</p>
+            </div>
+            <span className="selo">10 anos de NASA POWER · critério ZARC</span>
           </div>
+        </header>
 
-          <div className="tabela">
-            <table>
-              <thead>
-                <tr><th>Plantio</th>${dados.decendios.map(d => html`<th key=${d.decendio}>${d.decendio}</th>`)}</tr>
-              </thead>
-              <tbody>
-                ${culturas.map(c => html`
-                  <tr key=${c}>
-                    <td>${c}</td>
-                    ${dados.decendios.map(d => html`
-                      <td key=${d.decendio}
-                          style=${{ background: COR[d.nivel[c]], color: TEXTO[d.nivel[c]] }}
-                          title=${"risco calculado: " + Math.round(d.risco[c] * 100) + "%"}>
-                        ${d.nivel[c]}
-                      </td>`)}
-                  </tr>`)}
-                <tr>
-                  <td>Recomendado</td>
-                  ${dados.decendios.map(d => html`<td key=${d.decendio}><b>${d.recomendacao}</b></td>`)}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+        <main>
+          <form className="card" onSubmit=${calcular}>
+            <fieldset>
+              <div className="titulo">Onde</div>
+              <div className="campos">
+                <div className="campo" style=${{ gridColumn: "1 / -1" }}>Município
+                  <${Segmentado} valor=${cidade} onChange=${escolherCidade}
+                    opcoes=${[...CIDADES.map(c => ({ valor: c[0], rotulo: c[0] })), { valor: "outra", rotulo: "Outra" }]} />
+                </div>
+                <label>Latitude <input value=${lat} onChange=${e => { setCidade("outra"); setLat(e.target.value); }} /></label>
+                <label>Longitude <input value=${lon} onChange=${e => { setCidade("outra"); setLon(e.target.value); }} /></label>
+                <div className="campo" style=${{ gridColumn: "1 / -1" }}>Solo (água que ele guarda)
+                  <${Segmentado} valor=${cad} onChange=${setCad} opcoes=${[
+                    { valor: "30", rotulo: "Arenoso", sub: "30 mm", agua: 40 },
+                    { valor: "47", rotulo: "Médio", sub: "47 mm", agua: 65 },
+                    { valor: "72", rotulo: "Argiloso", sub: "72 mm", agua: 100 }]} />
+                </div>
+              </div>
+            </fieldset>
 
-          <div className="legenda">
-            <div><span style=${{ background: COR["20%"] }}></span>Menor risco (20%)</div>
-            <div><span style=${{ background: COR["30%"] }}></span>Risco médio (30%)</div>
-            <div><span style=${{ background: COR["40%"] }}></span>Maior risco (40%)</div>
-            <div><span style=${{ background: COR["inapto"] }}></span>Não indicado</div>
-          </div>
-        `}
+            <fieldset>
+              <div className="titulo">Colheita da soja</div>
+              <div className="campos">
+                <label>Início <input type="date" value=${inicio} onChange=${e => setInicio(e.target.value)} /></label>
+                <label>Fim <input type="date" value=${fim} disabled=${calcularFim} onChange=${e => setFimManual(e.target.value)} /></label>
+                <label className="toggle">
+                  <input type="checkbox" checked=${calcularFim} onChange=${e => setCalcularFim(e.target.checked)} />
+                  Calcular o fim pela capacidade de colheita
+                </label>
+                ${calcularFim && html`
+                  <label>Área (ha) <input type="number" min="1" value=${area} onChange=${e => setArea(e.target.value)} /></label>
+                  <div className="campo">Colhedoras <${Stepper} valor=${colhedoras} onChange=${setColhedoras} /></div>
+                  <div className="campo">ha/dia por colhedora* <${Slider} valor=${haDia} onChange=${setHaDia} min=${20} max=${150} step=${5} sufixo="" /></div>
+                  <div className="campo">Dias úteis* <${Slider} valor=${uteis} onChange=${setUteis} min=${30} max=${100} step=${5} sufixo="%" /></div>
+                  <div className="nota">Colheita leva <b>${dias} dias</b>. * estimativa: ajuste para a sua máquina e região.</div>`}
+              </div>
+            </fieldset>
+
+            <fieldset className="acao">
+              <div>
+                <div className="titulo">Risco</div>
+                <div className="campo">Risco aceito
+                  <${Segmentado} valor=${riscoMax} onChange=${setRiscoMax} opcoes=${[
+                    { valor: "0.2", rotulo: "20%", sub: "2 em 10 anos" },
+                    { valor: "0.3", rotulo: "30%", sub: "3 em 10 anos" },
+                    { valor: "0.4", rotulo: "40%", sub: "4 em 10 anos" }]} />
+                </div>
+              </div>
+              <button className="principal" disabled=${carregando}>${carregando ? (dados ? "Recalculando…" : "Baixando 10 anos da NASA…") : (dados ? "Recalcular" : "Calcular")}</button>
+              ${dados && html`<small className="dica">Mexa em qualquer controle: o resultado se atualiza sozinho.</small>`}
+            </fieldset>
+          </form>
+
+          ${erro && html`<div className="erro">${erro}</div>`}
+
+          ${dados && html`
+            <div ref=${resultadoRef} className="cards" style=${{ opacity: carregando ? .55 : 1, transition: "opacity .2s" }}>
+              ${trechosDaColheita(dados.decendios, consulta).map((t, i) => html`
+                <div key=${i} className="cultura" style=${{ "--cor": COR_CULTURA[t.cultura] || "var(--suave)" }}>
+                  <div className="nome">${t.cultura}</div>
+                  ${consulta.comHa
+                    ? html`<div className="ha">~${t.ha.toLocaleString("pt-BR")} <small>ha</small></div>`
+                    : html`<div className="ha">${t.dias} <small>dias</small></div>`}
+                  <div className="datas">plantio de ${t.de} a ${t.ate}</div>
+                </div>`)}
+            </div>
+
+            <div className="card">
+              <h2>Risco por decêndio de plantio</h2>
+              <div className="tabela">
+                <table>
+                  <thead>
+                    <tr><th></th>${dados.decendios.map(d => html`<th key=${d.decendio}>${d.decendio}</th>`)}</tr>
+                  </thead>
+                  <tbody>
+                    ${culturas.map(c => html`
+                      <tr key=${c}>
+                        <td>${c}</td>
+                        ${dados.decendios.map(d => html`
+                          <td key=${d.decendio}
+                              style=${{ background: COR[d.nivel[c]], color: TEXTO[d.nivel[c]] }}
+                              title=${"risco calculado: " + Math.round(d.risco[c] * 100) + "%"}>
+                            ${d.nivel[c] === "inapto" ? "—" : d.nivel[c]}
+                            <small className="calc">${Math.round(d.risco[c] * 100)}%</small>
+                          </td>`)}
+                      </tr>`)}
+                    <tr className="rec">
+                      <td>indicado</td>
+                      ${dados.decendios.map(d => html`<td key=${d.decendio}>${d.recomendacao}</td>`)}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="legenda">
+                <div><i style=${{ background: COR["20%"] }}></i>Menor risco (20%)</div>
+                <div><i style=${{ background: COR["30%"] }}></i>Risco médio (30%)</div>
+                <div><i style=${{ background: COR["40%"] }}></i>Maior risco (40%)</div>
+                <div><i style=${{ background: COR["inapto"] }}></i>Não indicado</div>
+              </div>
+              <div className="rodape">Número pequeno = risco calculado pelo modelo (falha em quantos % dos anos). Validado contra o ZARC (MAPA) em Indianópolis.</div>
+            </div>
+
+            <div className="card">
+              <h2>Comparar estratégias depois da soja</h2>
+              <div className="estrategias">
+                ${(() => { const av = avaliarGraos(dados.decendios, consulta, dados.riscoMax);
+                  return ESTRATEGIAS.map(e => html`
+                  <div key=${e.id} className="estrategia" style=${{ "--cor": e.cor }}>
+                    <div className="tag">${e.tag}</div>
+                    <h3>${e.nome}</h3>
+                    <div className="evid">${evidencia(e, av, dados.riscoMax, consulta)}</div>
+                    <details open=${!celular}>
+                      <summary>Detalhes</summary>
+                      <b className="k">Por quê</b><div>${e.porque}</div>
+                      <b className="k">Benefícios</b><ul>${e.beneficios.map(x => html`<li key=${x}>${x}</li>`)}</ul>
+                      <b className="k">Falta saber</b><ul>${e.lacunas.map(x => html`<li key=${x}>${x}</li>`)}</ul>
+                      <b className="k">Revisar com o agrônomo</b><ul>${e.revisar.map(x => html`<li key=${x}>${x}</li>`)}</ul>
+                    </details>
+                  </div>`); })()}
+              </div>
+              <div className="aviso"><b>Ferramenta de apoio.</b> O risco vem de 10 anos de dados da NASA com o critério do ZARC. Ela não substitui o produtor nem o agrônomo local, que conhecem o talhão, o mercado e as pragas da região.</div>
+            </div>
+          `}
+        </main>
       `;
     }
 

@@ -1,10 +1,22 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 
 // cliente do NASA POWER: a única parte que fala com a rede
 static class Power
 {
-    // baixa os últimos 10 anos completos do POWER e descarta os dias com -999
+    // cache em memória por coordenada: a NASA é chamada uma vez por ponto; depois a resposta é instantânea
+    static readonly ConcurrentDictionary<(double, double), List<Dia>> cache = new();
+
     public static async Task<List<Dia>> BaixarAsync(HttpClient http, double lat, double lon)
+    {
+        if (cache.TryGetValue((lat, lon), out var pronto)) return pronto;
+        var dias = await BaixarDaNasaAsync(http, lat, lon);
+        cache[(lat, lon)] = dias;
+        return dias;
+    }
+
+    // baixa os últimos 10 anos completos do POWER e descarta os dias com -999
+    static async Task<List<Dia>> BaixarDaNasaAsync(HttpClient http, double lat, double lon)
     {
         var inv = CultureInfo.InvariantCulture;           // força ponto decimal
         var ultimoAno = DateTime.Today.Year - 1;          // só anos completos
