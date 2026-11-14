@@ -4,6 +4,7 @@
     <Project Path="src/Farm.Core/Farm.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Farm.Api.Tests/Farm.Api.Tests.csproj" />
     <Project Path="tests/Farm.Core.Tests/Farm.Core.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
