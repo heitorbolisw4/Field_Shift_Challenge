@@ -8,5 +8,6 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Farm.Imerg/Farm.Imerg.csproj" />
+    <Project Path="tools/Farm.Smap/Farm.Smap.csproj" />
   </Folder>
 </Solution>
